@@ -301,6 +301,10 @@ app.get('/api/status', (req, res) => {
 // Serve static files from the React frontend app
 app.use(express.static(path.join(__dirname, '../dist')));
 
+// P9 Strangler UI Routing Middleware
+const { stranglerUiMiddleware } = require('./modules/proxy');
+app.use(stranglerUiMiddleware);
+
 // Anything that doesn't match the above, send back index.html
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
