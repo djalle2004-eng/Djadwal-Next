@@ -100,3 +100,4 @@ describe('P9 Strangler UI & Next.js App Router Verification Suite', () => {
     expect(res.status).toBe(200);
   });
 });
+

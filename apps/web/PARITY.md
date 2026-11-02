@@ -77,3 +77,4 @@
    MIGRATED_ROUTES="/dashboard,/professors,/rooms,/courses,/groups,/schedule,/print,/login"
    ```
    يتحول مسار `/sessions` تلقائيًا إلى الواجهة القديمة بينما تبقى الشاشات الأخرى على Next.js.
+
