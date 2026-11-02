@@ -15,11 +15,20 @@ import {
   LogOut,
   Database,
   Layers,
+  Search,
+  ClipboardList,
+  CalendarDays,
+  ArrowLeftRight,
+  Move,
+  UserCog,
+  ScrollText,
+  ExternalLink,
   ChevronDown
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
-const navItems = [
+// Core Navigation Items in Next.js
+const coreNavItems = [
   { name: 'لوحة التحكم', href: '/dashboard', icon: Calendar },
   { name: 'الأساتذة', href: '/professors', icon: Users },
   { name: 'القاعات', href: '/rooms', icon: DoorOpen },
@@ -27,7 +36,21 @@ const navItems = [
   { name: 'الأفواج', href: '/groups', icon: Users2 },
   { name: 'الجدول الزمني', href: '/schedule', icon: Calendar },
   { name: 'الحصص والتكليفات', href: '/sessions', icon: CalendarClock },
-  { name: 'الطباعة والمعاينة', href: '/print', icon: Printer },
+  { name: 'الطباعة', href: '/print', icon: Printer },
+];
+
+// Rich Faculty Tools (Directly served from Legacy SPA with 100% features)
+const facultyTools = [
+  { name: 'القاعات المتاحة (الحصص الإضافية والتعويضات)', href: '/legacy/available-rooms', icon: Search },
+  { name: 'عبء العمل للأساتذة (طباعة الأعباء)', href: '/legacy/professor-workload', icon: ClipboardList },
+  { name: 'جداول الأفواج', href: '/legacy/group-schedules', icon: CalendarDays },
+  { name: 'تبديل الحصص', href: '/legacy/session-swap', icon: ArrowLeftRight },
+  { name: 'نقل الحصص', href: '/legacy/session-move', icon: Move },
+  { name: 'السنوات الدراسية', href: '/legacy/academic-years', icon: Layers },
+  { name: 'إعدادات الطباعة', href: '/legacy/print-settings', icon: Printer },
+  { name: 'إدارة المستخدمين', href: '/legacy/users', icon: UserCog },
+  { name: 'النسخ الاحتياطي', href: '/legacy/backup', icon: Database },
+  { name: 'سجل الأنشطة', href: '/legacy/audit-log', icon: ScrollText },
 ];
 
 export default function Navigation() {
@@ -43,6 +66,8 @@ export default function Navigation() {
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [currentYear, setCurrentYear] = useState<string>('2026-2027');
   const [currentSemester, setCurrentSemester] = useState<string>('السداسي الأول');
+
+  const [showToolsDropdown, setShowToolsDropdown] = useState(false);
 
   useEffect(() => {
     // 1. Fetch DB Status (P6 indicator)
@@ -139,7 +164,7 @@ export default function Navigation() {
 
           {/* Navigation Items */}
           <div className="flex items-center gap-1 overflow-x-auto py-1">
-            {navItems.map((item) => {
+            {coreNavItems.map((item) => {
               const Icon = item.icon;
               const isActive =
                 item.href === '/dashboard'
@@ -161,6 +186,51 @@ export default function Navigation() {
                 </Link>
               );
             })}
+
+            {/* Faculty & Advanced Tools Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowToolsDropdown(!showToolsDropdown)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  showToolsDropdown
+                    ? 'bg-amber-100 text-amber-900'
+                    : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200'
+                }`}
+              >
+                <Search className="h-4 w-4 text-amber-600" />
+                <span>أدوات الكلية (القاعات المتاحة، الأعباء، التبديل)</span>
+                <ChevronDown className="h-3.5 w-3.5 text-amber-600" />
+              </button>
+
+              {showToolsDropdown && (
+                <div
+                  className="absolute left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50 animate-in fade-in slide-in-from-top-1"
+                  onMouseLeave={() => setShowToolsDropdown(false)}
+                >
+                  <div className="px-3 py-1.5 border-b border-gray-100 text-xs font-semibold text-gray-500">
+                    أدوات الكلية المعتمدة (الواجهة المكتملة)
+                  </div>
+                  {facultyTools.map((tool) => {
+                    const ToolIcon = tool.icon;
+                    return (
+                      <a
+                        key={tool.href}
+                        href={tool.href}
+                        className="flex items-center justify-between px-3 py-2 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors"
+                        onClick={() => setShowToolsDropdown(false)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <ToolIcon className="h-4 w-4 text-gray-400" />
+                          <span>{tool.name}</span>
+                        </div>
+                        <ExternalLink className="h-3 w-3 text-gray-400" />
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </nav>

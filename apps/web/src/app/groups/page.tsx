@@ -203,6 +203,13 @@ export default function GroupsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <a
+            href="/legacy/groups"
+            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
+            title="الانتقال إلى نظام الأفواج والتخصصات الكامل في الواجهة الكلاسيكية"
+          >
+            <span>الأفواج (الواجهة المعتمدة)</span>
+          </a>
           <button
             onClick={() => {
               setEditingGroup(null);
@@ -223,6 +230,13 @@ export default function GroupsPage() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      </div>
+
+      {/* Legacy notice */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-900">
+        <div className="text-sm">
+          <strong>تنبيه:</strong> لإدارة الأفواج والتخصصات مع جداول الأفواج ومصفوفة الحصص الكاملة، يمكنك التبديل مباشرة إلى <a href="/legacy/groups" className="underline font-bold hover:text-amber-700">الواجهة الكلاسيكية المكتملة</a> أو تصفح <a href="/legacy/group-schedules" className="underline font-bold hover:text-amber-700">جداول الأفواج</a>.
         </div>
       </div>
 

@@ -129,6 +129,14 @@ export default function SchedulePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <a
+            href="/legacy/schedule"
+            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
+            title="فتح جدول التوقيت الكامل في الواجهة الكلاسيكية المعتمدة"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>الجدول الكامل (الواجهة المعتمدة)</span>
+          </a>
           <Link
             href="/print"
             className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition-colors"
@@ -144,6 +152,39 @@ export default function SchedulePage() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
+        </div>
+      </div>
+
+      {/* Parity & Advanced Tools Banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 text-amber-900">
+        <div className="text-sm">
+          <strong>ملاحظة للمستخدمين:</strong> للوصول إلى كامل خصائص جدول المحاضرات المتطورة (التلوين الديناميكي، جداول الأفواج المستقلة، وأدوات تبديل ونقل الحصص)، يمكنك استخدام الواجهة الكلاسيكية المكتملة مباشرة.
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href="/legacy/schedule"
+            className="text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-amber-700 transition-colors"
+          >
+            جدول المحاضرات الكامل
+          </a>
+          <a
+            href="/legacy/group-schedules"
+            className="text-xs bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-200 transition-colors"
+          >
+            جداول الأفواج
+          </a>
+          <a
+            href="/legacy/session-swap"
+            className="text-xs bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-200 transition-colors"
+          >
+            تبديل الحصص
+          </a>
+          <a
+            href="/legacy/session-move"
+            className="text-xs bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-lg font-medium hover:bg-amber-200 transition-colors"
+          >
+            نقل الحصص
+          </a>
         </div>
       </div>
 

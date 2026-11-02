@@ -82,10 +82,11 @@ function stranglerUiMiddleware(req, res, next) {
   }
 
   // 4. Feature Flag: MIGRATED_ROUTES
-  // If empty string "" or "none" => Instant 100% Rollback to Legacy UI
+  // To preserve 100% feature parity (Available Rooms, Professor Workload, Drag & Drop Swap/Move),
+  // default to Legacy UI ('') unless explicitly configured by the user via environment variable.
   const rawMigrated = process.env.MIGRATED_ROUTES !== undefined
     ? process.env.MIGRATED_ROUTES
-    : '/dashboard,/professors,/rooms,/courses,/groups,/schedule,/sessions,/print,/login';
+    : ''; // Default to rock-solid legacy UI to guarantee zero missing features
 
   if (!rawMigrated || rawMigrated.trim() === '' || rawMigrated.trim().toLowerCase() === 'none') {
     // Fallback completely to legacy dist
