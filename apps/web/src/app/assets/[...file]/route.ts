@@ -8,3 +8,4 @@ export async function GET(
   const relPath = 'assets/' + (params.file || []).join('/');
   return serveDistFile(relPath);
 }
+

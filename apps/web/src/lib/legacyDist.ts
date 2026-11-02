@@ -82,3 +82,4 @@ export function serveDistFile(relPath: string) {
 
   return new NextResponse('Legacy build index.html not found', { status: 404 });
 }
+

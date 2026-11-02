@@ -8,3 +8,4 @@ export async function GET(
   const relPath = (params.slug || []).join('/');
   return serveDistFile(relPath);
 }
+

@@ -8,3 +8,4 @@ export async function GET(
   const relPath = 'fonts/' + (params.file || []).join('/');
   return serveDistFile(relPath);
 }
+

@@ -58,18 +58,18 @@ describe('P8 Modernized API v1, OpenAPI 3.1 Contract, Idempotency & Strangler Su
 
     const [assign] = await executeQuery(
       `INSERT INTO assignments (group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, version)
-       VALUES ($1, $2, $3, $4, 1, '08:00', '09:30', '2026-2027', '1', 1) RETURNING id`,
+       VALUES ($1, $2, $3, $4, 1, '08:00', '09:30', 'P8_TEST_YEAR', '1', 1) RETURNING id`,
       [testGroupId, testCourseId, testProfId, testRoomId]
     );
     testAssignId = assign.id;
   });
 
   afterAll(async () => {
-    // Clean up in reverse foreign-key order
+    // Clean up test records strictly by ID or test prefix (NEVER delete 2026-2027 production data)
     if (testAssignId) {
       await executeQuery('DELETE FROM assignments WHERE id = $1', [testAssignId]).catch(() => {});
     }
-    await executeQuery("DELETE FROM assignments WHERE academic_year = '2026-2027'").catch(() => {});
+    await executeQuery("DELETE FROM assignments WHERE academic_year = 'P8_TEST_YEAR'").catch(() => {});
     
     if (testGroupId) {
       await executeQuery('DELETE FROM groups WHERE id = $1', [testGroupId]).catch(() => {});
@@ -106,7 +106,7 @@ describe('P8 Modernized API v1, OpenAPI 3.1 Contract, Idempotency & Strangler Su
           url: process.env.TURSO_DATABASE_URL,
           authToken: process.env.TURSO_AUTH_TOKEN
         });
-        await turso.execute("DELETE FROM assignments WHERE academic_year = '2026-2027'").catch(() => {});
+        await turso.execute("DELETE FROM assignments WHERE academic_year = 'P8_TEST_YEAR'").catch(() => {});
         await turso.execute("DELETE FROM groups WHERE name LIKE 'P8_%'").catch(() => {});
         await turso.execute("DELETE FROM courses WHERE code LIKE 'P8_%'").catch(() => {});
         await turso.execute("DELETE FROM professors WHERE email LIKE '%@univ.dz' AND name LIKE 'P8%'").catch(() => {});
@@ -252,7 +252,7 @@ describe('P8 Modernized API v1, OpenAPI 3.1 Contract, Idempotency & Strangler Su
 
     it('covers Assignments (List, Get, Swap, Move)', async () => {
       // 17. List assignments
-      const aList = await request(app).get('/api/v1/assignments?academicYear=2026-2027&semester=1');
+      const aList = await request(app).get('/api/v1/assignments?academicYear=P8_TEST_YEAR&semester=1');
       expect(aList.status).toBe(200);
 
       // 18. Get assignment
