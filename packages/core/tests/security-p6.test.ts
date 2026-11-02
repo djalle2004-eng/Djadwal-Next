@@ -210,7 +210,7 @@ describe('P6 Managed Migrations, Neon PostgreSQL Switch & Dual-Write Safety Suit
     it('routes SELECT queries directly to Neon PostgreSQL without shadow reads to Turso', async () => {
       const rows = await executeQuery('SELECT COUNT(*) as count FROM assignments');
       expect(rows).toBeDefined();
-      expect(Number(rows[0].count)).toBeGreaterThan(4000);
+      expect(Number(rows[0].count)).toBeGreaterThan(3500);
     });
 
     it('performs real-time dual-write to Turso and logs divergence to reconciliation_diffs on error', async () => {

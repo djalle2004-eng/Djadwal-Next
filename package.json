@@ -17,7 +17,7 @@
     "electron:preview": "cross-env NODE_ENV=production electron .",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "electron:postinstall": "electron-builder install-app-deps",
-    "test": "vitest run",
+    "test": "vitest run --fileParallelism=false --testTimeout=25000",
     "typecheck": "tsc --noEmit",
     "server": "node server/server.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\"",

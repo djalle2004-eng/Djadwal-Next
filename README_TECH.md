@@ -1,6 +1,6 @@
 # Djadwal - Documentation Technique pour Développeurs
 
-**Version : 28.11.25.Turso**
+**Version : 01.11.26.Neon**
 
 Cette documentation s'adresse aux développeurs externes qui prendront en charge le développement et la maintenance de l'application Djadwal.
 

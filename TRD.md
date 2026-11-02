@@ -1,10 +1,10 @@
 # Document des Exigences Techniques (TRD) - Djadwal
 
 **Nom du Projet :** Djadwal (نظام إدارة الجداول الأكاديمية)  
-**Version Technique :** 28.11.25.Turso  
+**Version Technique :** 01.11.26.Neon  
 **Auteur / Responsable Technique :** Ali Hussain & Équipe Ingénierie Djadwal  
 **Statut :** Spécification Technique de Référence  
-**Date :** 10 Octobre 2026  
+**Date :** 01 Novembre 2026 (Mise à jour P8 - Modernisation Architecture API & Base Neon)  
 **Dépôt :** `djalle2004-eng/Djadwal`  
 **Document Associé :** [PRD.md](file:///c:/perso/suivie%20online%20130425/suivie29092025/hyper-V/suivie/suivie/PRD.md)
 
@@ -38,12 +38,14 @@ Le présent document (**Technical Requirements Document - TRD**) détaille les s
   - `exceljs` `^4.4.0`, `file-saver` `^2.0.5`
 
 ### 2.2 Backend API & Authentification
-- **Serveur HTTP** : Express `5.1.0` avec middleware `cors`, `cookie-parser`, `dotenv`
+- **Serveur HTTP** : Express `5.1.0` avec middlewares dédiés (`cors`, `cookie-parser`, `dotenv`, `server/middleware/trace.js`, `server/middleware/idempotency.js`, `server/middleware/validate.js`, `server/middleware/stranglerProxy.js`)
 - **Sécurité & Chiffrement** :
   - `bcrypt` `^6.0.0` (hachage des mots de passe salés à 10 tours)
   - `jose` `^6.1.3` (génération et vérification de tokens JWT HS256)
-- **Pilotes Base de Données** :
-  - Production / Cloud : `@libsql/client` `^0.14.0` (Turso DB over HTTPS/WSS)
+- **Pilotes Base de Données & ORM** :
+  - Moteur Principal : `pg` `^8.11.3` (Neon Serverless PostgreSQL 16 avec Pool PgBouncer & SSL)
+  - Moteur de Secours (Dual-Write) : `@libsql/client` `^0.14.0` (Turso Cloud libSQL)
+  - Gestion des Schémas & Migrations : `drizzle-orm` `^0.30.0` et `drizzle-kit` (`packages/db`)
   - Desktop Local : `better-sqlite3` `^11.9.1`
 
 ### 2.3 Écosystème Satellites

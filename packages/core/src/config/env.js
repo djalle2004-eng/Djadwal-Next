@@ -87,7 +87,10 @@ const envSchema = z.object({
   FEATURE_OPTIMISTIC_LOCK_MODE: z.enum(['off', 'monitor', 'enforce']).default('monitor'),
   FEATURE_SOFT_DELETE: z
     .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
-    .default(true)
+    .default(true),
+
+  // P8: Modernized API v1 & Strangler Proxy Flags
+  API_ROUTING_DEFAULT: z.enum(['legacy', 'v1', 'shadow']).default('legacy')
 });
 
 let hasLoggedStatus = false;

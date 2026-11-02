@@ -40,6 +40,7 @@ const upload = multer({
 });
 
 const apiRoutes = require('./routes');
+const apiV1Routes = require('./routesV1');
 
 // 1. Cookie Parser (Must be loaded first to provide req.cookies to security middlewares)
 app.use(cookieParser());
@@ -72,6 +73,9 @@ app.get(['/api/ping', '/ping'], (req, res) => {
 });
 
 // API Routes
+// Modern API v1 Routes
+app.use('/api/v1', apiV1Routes);
+
 app.use('/api', apiRoutes);
 
 // Serve uploaded files (logos)

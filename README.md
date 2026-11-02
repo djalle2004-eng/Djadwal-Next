@@ -1,10 +1,10 @@
 # Djadwal - نظام إدارة الجداول الأكاديمية
 
-**Djadwal** est une application de bureau complète pour la gestion des emplois du temps académiques, développée avec Electron, React, TypeScript et SQLite Cloud. L'application permet aux établissements d'enseignement de gérer efficacement leurs professeurs, cours, salles, groupes d'étudiants et planifications.
+**Djadwal** est une application de bureau complète pour la gestion des emplois du temps académiques, développée avec Electron, React, TypeScript, Express 5, Neon PostgreSQL 16 (Principal) et Turso LibSQL (Dual-Write Backup). L'application permet aux établissements d'enseignement de gérer efficacement leurs professeurs, cours, salles, groupes d'étudiants et planifications.
 
 ## Version actuelle
 
-28.11.25.Turso
+01.11.26.Neon
 
 ## 🚀 Fonctionnalités Principales
 

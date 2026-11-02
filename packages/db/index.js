@@ -18,7 +18,6 @@ function getDrizzleClient() {
       max: 10,
       idleTimeoutMillis: 30000
     });
-    // Schema can be loaded dynamically if needed
     drizzleDb = drizzle(pool);
   }
   return drizzleDb;
@@ -29,6 +28,7 @@ module.exports = {
   executeQuery: database.executeQuery,
   tables: [
     'academic_years',
+    'api_diff_report',
     'app_config',
     'assignments',
     'audit_log',
@@ -41,6 +41,7 @@ module.exports = {
     'email_settings',
     'extra_sessions',
     'groups',
+    'idempotency_keys',
     'invitations',
     'mfa_factors',
     'modules',

@@ -50,6 +50,7 @@ interface Stats {
   extraSessions: number;
   makeupSessions: number;
   examSessions: number;
+  totalSessions?: number;
 }
 
 interface LatestSession {
@@ -143,10 +144,31 @@ export default function Dashboard() {
 
   const handleDebugDatabase = async () => {
     try {
-      const data = await window.electron.invoke('debug-database-content');
-      setDebugData(data);
-      setShowDebug(true);
-      console.log('🔍 Debug Data:', data);
+      let data: any = null;
+      if (window.electron && typeof window.electron.invoke === 'function') {
+        data = await window.electron.invoke('debug-database-content');
+      } else if (window.db) {
+        // وضع الويب (Web Mode) - جلب بيانات التشخيص عبر facade واجهة البيانات window.db
+        const [years, semesters, assignments] = await Promise.all([
+          window.db.getAcademicYears().catch(() => []),
+          window.db.getSemesters().catch(() => []),
+          window.db.getAssignments().catch(() => [])
+        ]);
+        data = {
+          years,
+          semesters,
+          assignmentsCount: assignments?.length || 0,
+          sampleAssignments: (assignments || []).slice(0, 3)
+        };
+      }
+
+      if (data) {
+        setDebugData(data);
+        setShowDebug(true);
+        console.log('🔍 Debug Data:', data);
+      } else {
+        alert('بيانات التشخيص غير متوفرة حالياً');
+      }
     } catch (error) {
       console.error('Debug error:', error);
       alert('فشل في جلب بيانات التشخيص');
@@ -159,16 +181,20 @@ export default function Dashboard() {
     }
 
     try {
-      const result = await window.electron.invoke('fix-semester-names');
-      if (result.success) {
-        // مسح localStorage لإجبار إعادة التحميل من قاعدة البيانات
-        localStorage.removeItem('selectedSemester');
-        localStorage.removeItem('selectedAcademicYear');
+      if (window.electron && typeof window.electron.invoke === 'function') {
+        const result = await window.electron.invoke('fix-semester-names');
+        if (result.success) {
+          // مسح localStorage لإجبار إعادة التحميل من قاعدة البيانات
+          localStorage.removeItem('selectedSemester');
+          localStorage.removeItem('selectedAcademicYear');
 
-        alert('✅ تم تحديث أسماء الفصول بنجاح!\n\nسيتم إعادة تحميل الصفحة الآن.');
-        window.location.reload();
+          alert('✅ تم تحديث أسماء الفصول بنجاح!\n\nسيتم إعادة تحميل الصفحة الآن.');
+          window.location.reload();
+        } else {
+          alert('❌ فشل في تحديث أسماء الفصول: ' + result.error);
+        }
       } else {
-        alert('❌ فشل في تحديث أسماء الفصول: ' + result.error);
+        alert('ℹ️ تحديث المخطط عبر IPC متاح فقط في تطبيق سطح المكتب Electron. في بيئة الويب تتم إدارة المخطط تلقائياً عبر ترحيلات الخادم.');
       }
     } catch (error) {
       console.error('Fix error:', error);
@@ -251,11 +277,21 @@ export default function Dashboard() {
           throw new Error('تعذر الاتصال بقاعدة البيانات السحابية. يرجى التحقق من الشبكة وإعادة المحاولة.');
         }
 
+        // تطبيع أسماء الفصول للتعامل مع كشيدة التطويل والمطابقة بين "السداسي" و"الفصل"
+        const normalizeArabicText = (txt: string) => {
+          if (!txt) return '';
+          return txt
+            .replace(/[\u0640]/g, '') // إزالة كشيدة التطويل
+            .replace(/السداسي/g, 'الفصل') // توحيد السداسي والفصل
+            .trim();
+        };
+
         // Filter assignments by current academic year and semester
         const filteredAssignments = assignmentsData?.filter((assignment: any) => {
           if (!currentYear || !currentSemester) return true; // Show all if no year/semester selected
-          return assignment.academic_year === currentYear.year_name &&
-            assignment.semester === currentSemester.semester_name;
+          const matchYear = assignment.academic_year === currentYear.year_name;
+          const matchSemester = normalizeArabicText(assignment.semester) === normalizeArabicText(currentSemester.semester_name);
+          return matchYear && matchSemester;
         }) || [];
 
         setStats({
@@ -263,6 +299,7 @@ export default function Dashboard() {
           courses: coursesData?.length || 0,
           rooms: roomsData?.length || 0,
           sessions: filteredAssignments.length,
+          totalSessions: assignmentsData?.length || 0,
           groups: groupsData?.length || 0,
           extraSessions: extraSessionsData?.filter((s: any) => s.session_type === 'extra').length || 0,
           makeupSessions: extraSessionsData?.filter((s: any) => s.session_type === 'makeup').length || 0,
@@ -550,13 +587,18 @@ export default function Dashboard() {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold tracking-tight text-gray-900">Dashboard</h1>
             <div className="flex flex-col items-end gap-2">
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-gray-600 flex flex-wrap items-center gap-2 justify-end">
                 {currentYear && currentSemester ? (
                   <span>
-                    السنة الدراسية: {currentYear.year_name} | الفصل: {currentSemester.semester_name}
+                    السنة الدراسية: <strong className="text-gray-900">{currentYear.year_name}</strong> | الفصل: <strong className="text-gray-900">{currentSemester.semester_name}</strong>
                   </span>
                 ) : (
                   <span className="text-red-500">لم يتم تحديد السنة الدراسية والفصل</span>
+                )}
+                {stats.sessions === 0 && (stats.totalSessions || 0) > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md" title="سنة 2026-2027 لا تحتوي على حصص حالياً، التكليفات مسجلة في 2025-2026">
+                    ℹ️ لا توجد تكليفات في {currentYear?.year_name}. توجد ({stats.totalSessions}) تكليفاً مسجلة في سنوات أخرى.
+                  </span>
                 )}
               </div>
               {dbInfo && (
@@ -753,7 +795,14 @@ export default function Dashboard() {
                   <div className="ml-5 w-0 flex-1">
                     <dl>
                       <dt className="text-sm font-medium text-gray-500 truncate">Sessions</dt>
-                      <dd className="text-lg font-medium text-gray-900">{stats.sessions}</dd>
+                      <dd className="text-lg font-medium text-gray-900 flex items-baseline gap-1.5">
+                        <span>{stats.sessions}</span>
+                        {stats.sessions === 0 && (stats.totalSessions || 0) > 0 && (
+                          <span className="text-xs text-amber-600 font-normal">
+                            ({stats.totalSessions} إجمالي)
+                          </span>
+                        )}
+                      </dd>
                     </dl>
                   </div>
                 </div>

@@ -1,10 +1,10 @@
 # Schéma Backend & Base de Données (BACKEND SCHEMA) - Djadwal
 
 **Nom du Produit :** Djadwal (نظام إدارة الجداول الأكاديمية)  
-**Version Technique :** 28.11.25.Turso  
-**Moteur de Base de Données :** Turso (libSQL Serverless / Haute Disponibilité) + Fallback Better-SQLite3  
+**Version Technique :** 01.11.26.Neon  
+**Moteur de Base de Données :** Neon Serverless PostgreSQL 16 (Principal) + Turso libSQL Cloud (Secours / Dual-Write)  
 **Statut :** Schéma Physique & Contrats d'API de Référence  
-**Date :** 10 Octobre 2026  
+**Date :** 01 Novembre 2026 (Mise à jour P8)  
 **Dépôt :** `djalle2004-eng/Djadwal`  
 **Documents Liés :** [PRD.md](file:///c:/perso/suivie%20online%20130425/suivie29092025/hyper-V/suivie/suivie/PRD.md) | [TRD.md](file:///c:/perso/suivie%20online%20130425/suivie29092025/hyper-V/suivie/suivie/TRD.md) | [APPFLOW.md](file:///c:/perso/suivie%20online%20130425/suivie29092025/hyper-V/suivie/suivie/APPFLOW.md) | [UX_UI_DESIGN.md](file:///c:/perso/suivie%20online%20130425/suivie29092025/hyper-V/suivie/suivie/UX_UI_DESIGN.md)
 
@@ -16,7 +16,7 @@ Le backend de **Djadwal** s'appuie sur une base de données relationnelle **libS
 
 ### 1.1 Principes d'Ingénierie des Données
 - **Atomicité & Transactions :** Les opérations de planification (assignation, permutation *swap*, et publication *sandbox*) sont encapsulées dans des transactions ACID garantissant zéro état incohérent.
-- **Auto-Guérison (Auto-Migration au démarrage) :** Le serveur Express et le Main Process Electron vérifient et créent dynamiquement les colonnes ou tables manquantes (`ensureSandboxTable`, `ensureAuditLogTable`, `ensureSemesterPublicColumn`, `ensurePermissionsColumn`).
+- **Migrations Gérées par Version (Drizzle ORM) :** Le DDL au démarrage a été complètement désactivé au profit d'un système de migrations séquentielles (`packages/db/drizzle/` : 0000, 0001, 0002, 0003) exécutées via `scripts/migrate.ts` sous un verrou consultatif PostgreSQL (`pg_try_advisory_lock`).
 - **Immunité aux Injections SQL :** Toutes les requêtes sont systématiquement paramétrées (`$1, $2...` ou `?`) sans aucune concaténation directe de chaîne.
 
 ---
@@ -539,3 +539,38 @@ CREATE TABLE IF NOT EXISTS app_config (
   "created_at": "2026-10-10T18:40:00Z"
 }
 ```
+
+
+### 4.6 Tables Techniques et de Résilience (P7 & P8)
+
+#### `change_log` (Journal des Changements et Annulations)
+| Colonne | Type | Contraintes | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | SERIAL / INTEGER | PRIMARY KEY | Identifiant unique |
+| `entity_type` | VARCHAR(50) | NOT NULL | Type d'entité (department, assignment, course...) |
+| `entity_id` | INTEGER | NOT NULL | Identifiant de l'entité modifiée |
+| `action` | VARCHAR(20) | NOT NULL | CREATE, UPDATE, DELETE, CASCADE_DELETE |
+| `before_state` | JSONB / TEXT | | État avant modification |
+| `after_state` | JSONB / TEXT | | État après modification |
+| `changed_by` | VARCHAR(100) | | Utilisateur ou système auteur |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Horodatage |
+
+#### `idempotency_keys` (Gestion de l'Idempotence 24h)
+| Colonne | Type | Contraintes | Description |
+| :--- | :--- | :--- | :--- |
+| `key` | VARCHAR(255) | PRIMARY KEY | Clé transmise par le client (`Idempotency-Key`) |
+| `request_path` | VARCHAR(255) | NOT NULL | Chemin de la requête API |
+| `request_params_hash` | VARCHAR(64) | NOT NULL | Empreinte SHA-256 du body et query |
+| `response_code` | INTEGER | NOT NULL | Code HTTP retourné (ex: 200, 201) |
+| `response_body` | JSONB / TEXT | NOT NULL | Corps de la réponse rejouée |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Date de création (TTL 24h) |
+
+#### `api_diff_report` (Rapport de Différences Strangler Shadow)
+| Colonne | Type | Contraintes | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | SERIAL / INTEGER | PRIMARY KEY | Identifiant |
+| `endpoint` | VARCHAR(255) | NOT NULL | Point d'entrée testé |
+| `legacy_status` | INTEGER | NOT NULL | Statut HTTP renvoyé par l'ancien gestionnaire |
+| `v1_status` | INTEGER | NOT NULL | Statut HTTP renvoyé par le gestionnaire v1 |
+| `diff_summary` | JSONB / TEXT | | Résumé des divergences détectées |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Date du rapport |

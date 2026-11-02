@@ -38,6 +38,9 @@
 - الترحيلات محفوظة في `packages/db/drizzle/`:
   - `0000_baseline.sql`: لقطة المخطط الأساسي المتوافق مع بيانات الإنتاج.
   - `0001_expand_safe_columns.sql`: إضافة الأعمدة الآمنة بنمط «وسّع ثم قلّص» (`is_public`, `version`, `audit_hashes`, `created_at`, `updated_at`).
+  - `0002_p7_atomic_business_layer.sql`: دعم القفل التفاؤلي (`version`) والحذف الناعم (`deleted_at`) وسجل التغييرات (`change_log`).
+  - `0003_p8_api_v1_idempotency.sql`: جداول منع تكرار الطلبات (`idempotency_keys` مع مؤشر انتهاء صلاحية 24h) وتقارير التباين الظلي للبروكسي (`api_diff_report`).
+
 
 ### القفل الاستشاري الموزع (Distributed Advisory Lock)
 لتجنب تضارب الترحيلات عند إقلاع نسختين متوازيتين من الخادم (Zero-Downtime Rolling Deployment)، تستخدم أداة `scripts/migrate.ts` القفل الاستشاري الموزع:

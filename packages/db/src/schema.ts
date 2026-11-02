@@ -389,3 +389,33 @@ export const changeLog = pgTable('change_log', {
   entityIdx: index('idx_change_log_entity').on(table.entity_type, table.entity_id),
   createdIdx: index('idx_change_log_created').on(table.created_at)
 }));
+
+// 29. Idempotency Keys (P8 API v1 Idempotency Store)
+export const idempotencyKeys = pgTable('idempotency_keys', {
+  key: text('key').primaryKey(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  request_hash: text('request_hash').notNull(),
+  status_code: integer('status_code').notNull(),
+  response_body: text('response_body'),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  expires_at: timestamp('expires_at').notNull()
+}, (table) => ({
+  expiresIdx: index('idx_idempotency_expires').on(table.expires_at)
+}));
+
+// 30. API Diff Report (P8 Shadow Route Verification Log)
+export const apiDiffReport = pgTable('api_diff_report', {
+  id: serial('id').primaryKey(),
+  route_name: text('route_name').notNull(),
+  method: text('method').notNull(),
+  path: text('path').notNull(),
+  legacy_status: integer('legacy_status').notNull(),
+  v1_status: integer('v1_status').notNull(),
+  diff_summary: text('diff_summary'),
+  trace_id: text('trace_id'),
+  created_at: timestamp('created_at').defaultNow().notNull()
+}, (table) => ({
+  routeIdx: index('idx_api_diff_route').on(table.route_name),
+  createdIdx: index('idx_api_diff_created').on(table.created_at)
+}));

@@ -300,7 +300,9 @@ export async function verify(): Promise<boolean> {
       'auth_events', 'invitations', 'mfa_factors', 'password_reset_tokens',
       'modules', 'preferences', 'specializations', 'schema_migrations',
       'reconciliation_diffs',
-      'change_log'
+      'change_log',
+      'idempotency_keys',
+      'api_diff_report'
     ];
 
     const tablesRes = await client.query(`

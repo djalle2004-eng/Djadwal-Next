@@ -1,0 +1,1183 @@
+openapi: 3.1.0
+info:
+  title: Djadwal Academic Scheduling API
+  version: 1.0.0
+  description: >
+    Production REST API v1.0.0 for Djadwal Academic Scheduling System.
+    Provides idempotent writes, optimistic concurrency locking, soft deletes,
+    and structured Arabic error diagnostics.
+servers:
+  - url: /api/v1
+    description: Primary API v1 Router
+
+paths:
+  /ping:
+    get:
+      summary: Isolated Heartbeat Ping
+      description: Returns lightweight memory-cached 200 OK without touching the database (< 5ms).
+      responses:
+        '200':
+          description: Service alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /compat-report:
+    get:
+      summary: API v1 Compatibility & Shadow Route Diff Report
+      description: Returns real-time metrics comparing legacy and v1 routes executed in shadow mode.
+      responses:
+        '200':
+          description: Compatibility report data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompatReport'
+
+  /catalog/departments:
+    get:
+      summary: List all departments
+      parameters:
+        - name: withArchived
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Department'
+    post:
+      summary: Create new department
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDepartmentInput'
+      responses:
+        '201':
+          description: Department created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /catalog/departments/{id}:
+    get:
+      summary: Get department by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Department record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    put:
+      summary: Update department
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDepartmentInput'
+      responses:
+        '200':
+          description: Department updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+    delete:
+      summary: Soft-delete department
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Department soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  archived:
+                    type: boolean
+
+  /catalog/departments/{id}/archive-cascade:
+    post:
+      summary: Atomically cascade soft-delete to department and all related courses and groups
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Department and related entities archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  departmentId:
+                    type: string
+
+  /catalog/rooms:
+    get:
+      summary: List all rooms
+      responses:
+        '200':
+          description: List of rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Room'
+    post:
+      summary: Create new room
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomInput'
+      responses:
+        '201':
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+
+  /catalog/rooms/{id}:
+    get:
+      summary: Get room by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+    put:
+      summary: Update room
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoomInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+    delete:
+      summary: Soft-delete room
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /catalog/courses:
+    get:
+      summary: List all courses
+      responses:
+        '200':
+          description: List of courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Course'
+    post:
+      summary: Create new course
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCourseInput'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+
+  /catalog/courses/{id}:
+    get:
+      summary: Get course by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+    put:
+      summary: Update course
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+    delete:
+      summary: Soft-delete course
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /catalog/groups:
+    get:
+      summary: List all groups
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+    post:
+      summary: Create new group
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupInput'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+
+  /catalog/groups/{id}:
+    get:
+      summary: Get group by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+    put:
+      summary: Update group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+    delete:
+      summary: Soft-delete group
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /professors:
+    get:
+      summary: List all professors
+      responses:
+        '200':
+          description: List of professors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Professor'
+    post:
+      summary: Create new professor
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProfessorInput'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Professor'
+
+  /professors/{id}:
+    get:
+      summary: Get professor by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Professor'
+    put:
+      summary: Update professor (optimistic lock protected)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfessorInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Professor'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+    delete:
+      summary: Soft-delete professor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /professors/bulk-import:
+    post:
+      summary: Bulk-import professors in an atomic transaction
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [professors]
+              properties:
+                professors:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CreateProfessorInput'
+      responses:
+        '200':
+          description: Bulk import result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  professors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Professor'
+
+  /assignments:
+    get:
+      summary: List assignments
+      parameters:
+        - name: academicYear
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: semester
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Assignment'
+    post:
+      summary: Create new assignment
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentInput'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+
+  /assignments/{id}:
+    get:
+      summary: Get assignment by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+    put:
+      summary: Update assignment (supports optimistic lock version)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAssignmentInput'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+    delete:
+      summary: Delete assignment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /assignments/swap:
+    post:
+      summary: Atomically swap time and room slots between two assignments
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idA, idB]
+              properties:
+                idA:
+                  type: integer
+                idB:
+                  type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  assignmentA:
+                    $ref: '#/components/schemas/Assignment'
+                  assignmentB:
+                    $ref: '#/components/schemas/Assignment'
+
+  /assignments/{id}/move:
+    post:
+      summary: Atomically move assignment to a new time/room slot with conflict checks
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [day_of_week, start_time, end_time]
+              properties:
+                day_of_week:
+                  type: integer
+                start_time:
+                  type: string
+                end_time:
+                  type: string
+                room_id:
+                  type: integer
+                version:
+                  type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assignment'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  /changes:
+    get:
+      summary: List recent change log audit entries
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChangeLogEntry'
+
+  /changes/{id}/undo:
+    post:
+      summary: Revert a recorded change within 24 hours
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  changeId:
+                    type: integer
+                  message:
+                    type: string
+
+  /{entity}/{id}/delete-impact:
+    get:
+      summary: Preview deletion impact count of dependent entities
+      parameters:
+        - name: entity
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteImpactResult'
+
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Unique key ensuring idempotent execution for write requests
+      schema:
+        type: string
+
+  schemas:
+    Department:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        code:
+          type: string
+        created_at:
+          type: string
+        deleted_at:
+          type: string
+
+    CreateDepartmentInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 150
+        code:
+          type: string
+          maxLength: 50
+
+    UpdateDepartmentInput:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+
+    Room:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        capacity:
+          type: integer
+        version:
+          type: integer
+        deleted_at:
+          type: string
+
+    CreateRoomInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        capacity:
+          type: integer
+
+    UpdateRoomInput:
+      type: object
+      properties:
+        name:
+          type: string
+        capacity:
+          type: integer
+        version:
+          type: integer
+
+    Course:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        code:
+          type: string
+        department_id:
+          type: integer
+        version:
+          type: integer
+        deleted_at:
+          type: string
+
+    CreateCourseInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        department_id:
+          type: integer
+
+    UpdateCourseInput:
+      type: object
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+        department_id:
+          type: integer
+        version:
+          type: integer
+
+    Group:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        specialization:
+          type: string
+        department_id:
+          type: integer
+        version:
+          type: integer
+        deleted_at:
+          type: string
+
+    CreateGroupInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        specialization:
+          type: string
+        department_id:
+          type: integer
+
+    UpdateGroupInput:
+      type: object
+      properties:
+        name:
+          type: string
+        specialization:
+          type: string
+        department_id:
+          type: integer
+        version:
+          type: integer
+
+    Professor:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        title:
+          type: string
+        academic_title:
+          type: string
+        version:
+          type: integer
+        deleted_at:
+          type: string
+
+    CreateProfessorInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        title:
+          type: string
+        academic_title:
+          type: string
+
+    UpdateProfessorInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        title:
+          type: string
+        academic_title:
+          type: string
+        version:
+          type: integer
+
+    Assignment:
+      type: object
+      required: [id, group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time]
+      properties:
+        id:
+          type: integer
+        group_id:
+          type: integer
+        course_id:
+          type: integer
+        professor_id:
+          type: integer
+        room_id:
+          type: integer
+        day_of_week:
+          type: integer
+        start_time:
+          type: string
+        end_time:
+          type: string
+        academic_year:
+          type: string
+        semester:
+          type: string
+        specialization:
+          type: string
+        version:
+          type: integer
+
+    CreateAssignmentInput:
+      type: object
+      required: [group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time]
+      properties:
+        group_id:
+          type: integer
+        course_id:
+          type: integer
+        professor_id:
+          type: integer
+        room_id:
+          type: integer
+        day_of_week:
+          type: integer
+        start_time:
+          type: string
+        end_time:
+          type: string
+        academic_year:
+          type: string
+        semester:
+          type: string
+        specialization:
+          type: string
+
+    UpdateAssignmentInput:
+      type: object
+      properties:
+        group_id:
+          type: integer
+        course_id:
+          type: integer
+        professor_id:
+          type: integer
+        room_id:
+          type: integer
+        day_of_week:
+          type: integer
+        start_time:
+          type: string
+        end_time:
+          type: string
+        version:
+          type: integer
+
+    ChangeLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+        action:
+          type: string
+        before_state:
+          type: object
+        after_state:
+          type: object
+        created_at:
+          type: string
+        reverted_at:
+          type: string
+
+    DeleteImpactResult:
+      type: object
+      properties:
+        entity:
+          type: string
+        id:
+          type: integer
+        name:
+          type: string
+        canDelete:
+          type: boolean
+        impacts:
+          type: array
+          items:
+            type: object
+            properties:
+              labelArabic:
+                type: string
+              count:
+                type: integer
+              entityType:
+                type: string
+        totalImpactCount:
+          type: integer
+
+    CompatReport:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            totalEvaluations:
+              type: integer
+            matchPercentage:
+              type: number
+            diffCount:
+              type: integer
+            lastEvaluatedAt:
+              type: string
+        routes:
+          type: array
+          items:
+            type: object
+            properties:
+              routeName:
+                type: string
+              total:
+                type: integer
+              matches:
+                type: integer
+              diffs:
+                type: integer
+              matchPct:
+                type: number
+              recentDiffs:
+                type: array
+
+  responses:
+    ValidationError:
+      description: Unprocessable entity / validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: VALIDATION_FAILED
+                  message_ar:
+                    type: string
+                    example: البيانات المدخلة غير صالحة
+                  trace_id:
+                    type: string
+                  details:
+                    type: array
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: NOT_FOUND
+                  message_ar:
+                    type: string
+                  trace_id:
+                    type: string
+
+    ConflictError:
+      description: Optimistic lock conflict
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    example: CONFLICT_LOCK
+                  message_ar:
+                    type: string
+                  expectedVersion:
+                    type: integer
+                  actualVersion:
+                    type: integer
+                  trace_id:
+                    type: string
+

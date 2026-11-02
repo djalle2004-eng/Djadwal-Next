@@ -1,10 +1,10 @@
 # Document des Exigences Produit (PRD) - Djadwal
 
 **Nom du Produit :** Djadwal (نظام إدارة الجداول الأكاديمية)  
-**Version :** 28.11.25.Turso  
+**Version :** 01.11.26.Neon  
 **Auteur :** Ali Hussain & Équipe Djadwal  
 **Statut :** Validé / En Production  
-**Date :** 10 Octobre 2026  
+**Date :** 01 Novembre 2026 (Mise à jour P8 - Modernisation API v1 & Neon PostgreSQL)  
 **Dépôt :** `djalle2004-eng/Djadwal`  
 
 ---
@@ -37,7 +37,7 @@ Dans les universités et établissements d'enseignement supérieur, la confectio
 | **Responsable Pédagogique / Chef de Département** | En charge de l'affectation des cours, de la saisie des maquettes pédagogiques et de la grille horaire de son département. | Gestion des enseignants, cours, groupes, affectations de charges, sessions et plannings de son périmètre. |
 | **Enseignant (Permanent / Vacataire)** | Soumet ses vœux et disponibilités, consulte son emploi du temps individuel et son décompte d'heures. | Accès au Portail Web/Mobile : profil, matrice de préférences/disponibilités, consultation de son planning. |
 | **Délégué / Étudiant** | Consulte les emplois du temps de sa promotion/groupe et les annonces de rattrapage ou d'examen. | Consultation via l'application mobile ou exports PDF/Web des plannings de groupes. |
-| **Administrateur Système (IT)** | Maintenance de l'infrastructure, connectivité base de données, migration et synchronisation. | Paramètres de base de données (Turso, SQLiteCloud), audit logs, sauvegardes et restaurations. |
+| **Administrateur Système (IT)** | Maintenance de l'infrastructure, connectivité base de données, migration et synchronisation. | Gestion Neon PostgreSQL & Turso Dual-Write, migrations Drizzle, audit logs, sauvegardes et restaurations. |
 
 ---
 
@@ -65,10 +65,11 @@ Dans les universités et établissements d'enseignement supérieur, la confectio
                                          │
                                          ▼
 +-----------------------------------------------------------------------------------+
-|                             COUCHE DE DONNÉES HYBRIDE                             |
-|  - Production : Turso DB (libSQL Serverless / Haute Disponibilité)                |
-|  - Secours / Synchronisation : SQLiteCloud                                        |
-|  - Local Déconnecté : Better-SQLite3 (Mode embarqué Electron)                     |
+|                             COUCHE DE DONNÉES & API MODERNE                       |
+|  - Production Principale : Neon PostgreSQL 16 (Serverless / Pooled Connection)    |
+|  - Secours / Haute Disponibilité : Turso Cloud libSQL (Écriture Double / Dual-Write)|
+|  - Architecture API : REST v1 (/api/v1) + Strangler Fig Proxy + OpenAPI 3.1       |
+|  - Fiabilité & Transactions : Unit of Work, Idempotency-Key (24h TTL), Verrou 409 |
 +-----------------------------------------------------------------------------------+
 ```
 
