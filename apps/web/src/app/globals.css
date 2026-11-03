@@ -1,3 +1,6 @@
+@import '../../../../packages/ui/src/tokens/tokens.css';
+@import '../../../../packages/ui/src/styles/fonts.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -1,0 +1,36 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "plugins": ["jsx-a11y"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:jsx-a11y/recommended"
+  ],
+  "rules": {
+    "no-undef": "off",
+    "no-unused-vars": "off",
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "JSXAttribute[name.name='className'] > Literal[value=/\\b(pl-|pr-|ml-|mr-|left-|right-|border-l-|border-r-|text-left|text-right)\\b/]",
+        "message": "🚫 استخدام اتجاهات فيزيائية ممنوع! يرجى استخدام الخصائص المنطقية حصريًا: ps-* بدلاً من pl-*, pe-* بدلاً من pr-*, ms-* بدلاً من ml-*, me-* بدلاً من mr-*, start-* بدلاً من left-*, end-* بدلاً من right-*, border-s-* / border-e-*, text-start / text-end."
+      }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@mui/*", "@emotion/*"],
+            "message": "🚫 استيراد مكتبات MUI أو Emotion محظور تماماً داخل packages/ui!"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -2,11 +2,36 @@
   "name": "@djadwal/ui",
   "version": "1.0.0",
   "private": true,
-  "description": "Djadwal Shared UI Design Tokens and Component Definitions",
-  "main": "index.js",
+  "description": "Arabic-First Accessible Design System for Djadwal",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./tokens.css": "./src/tokens/tokens.css",
+    "./fonts.css": "./src/styles/fonts.css",
+    "./components/*": "./src/components/*"
+  },
   "scripts": {
-    "build": "node -e \"console.log('@djadwal/ui: build ok')\"",
-    "typecheck": "node -e \"console.log('@djadwal/ui: typecheck ok')\"",
-    "lint": "eslint . --ignore-pattern node_modules"
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "cross-env ESLINT_USE_FLAT_CONFIG=false eslint -c .eslintrc.json \"src/**/*.{ts,tsx}\""
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.263.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "typescript": "^5.3.3"
   }
 }

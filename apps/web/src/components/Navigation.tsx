@@ -23,7 +23,8 @@ import {
   UserCog,
   ScrollText,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Sparkles
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -37,6 +38,7 @@ const coreNavItems = [
   { name: 'الجدول الزمني', href: '/schedule', icon: Calendar },
   { name: 'الحصص والتكليفات', href: '/sessions', icon: CalendarClock },
   { name: 'الطباعة', href: '/print', icon: Printer },
+  { name: 'نظام التصميم', href: '/design-system', icon: Sparkles },
 ];
 
 // Rich Faculty Tools (Directly served from Legacy SPA with 100% features)

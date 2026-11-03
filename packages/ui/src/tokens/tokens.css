@@ -1,0 +1,76 @@
+/**
+ * Djadwal Design System CSS Variables
+ * Compliant with WCAG 2.2 AA and Tailwind v4 @theme / v3 config
+ */
+
+:root {
+  /* Colors - Light Theme */
+  --dj-color-primary-50: #ecfdf5;
+  --dj-color-primary-100: #d1fae5;
+  --dj-color-primary-200: #a7f3d0;
+  --dj-color-primary-500: #10b981;
+  --dj-color-primary-600: #059669;
+  --dj-color-primary-700: #047857;
+  --dj-color-primary-800: #065f46;
+  --dj-color-primary-900: #064e3b;
+
+  --dj-color-bg: #f8fafc;
+  --dj-color-surface: #ffffff;
+  --dj-color-surface-hover: #f1f5f9;
+  --dj-color-border: #e2e8f0;
+  --dj-color-text-main: #0f172a;
+  --dj-color-text-muted: #64748b;
+
+  --dj-color-success: #16a34a;
+  --dj-color-warning: #d97706;
+  --dj-color-danger: #dc2626;
+  --dj-color-info: #0284c7;
+
+  /* Spacing Grid (4pt based) */
+  --dj-spacing-1: 4px;
+  --dj-spacing-2: 8px;
+  --dj-spacing-3: 12px;
+  --dj-spacing-4: 16px;
+  --dj-spacing-5: 20px;
+  --dj-spacing-6: 24px;
+  --dj-spacing-8: 32px;
+
+  /* Radii */
+  --dj-radius-sm: 4px;
+  --dj-radius-md: 8px;
+  --dj-radius-lg: 12px;
+  --dj-radius-xl: 16px;
+  --dj-radius-full: 9999px;
+
+  /* Shadows */
+  --dj-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --dj-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --dj-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Typography */
+  --dj-font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --dj-line-height-arabic: 1.7;
+}
+
+/* Dark Theme Variables */
+.dark, [data-theme='dark'] {
+  --dj-color-primary-50: #022c22;
+  --dj-color-primary-100: #064e3b;
+  --dj-color-primary-200: #065f46;
+  --dj-color-primary-500: #10b981;
+  --dj-color-primary-600: #34d399;
+  --dj-color-primary-700: #6ee7b7;
+  --dj-color-primary-800: #a7f3d0;
+  --dj-color-primary-900: #ecfdf5;
+
+  --dj-color-bg: #090d16;
+  --dj-color-surface: #131b2e;
+  --dj-color-surface-hover: #1e293b;
+  --dj-color-border: #334155;
+  --dj-color-text-main: #f8fafc;
+  --dj-color-text-muted: #94a3b8;
+
+  --dj-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --dj-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --dj-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+}

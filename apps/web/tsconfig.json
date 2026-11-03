@@ -18,8 +18,15 @@
       }
     ],
     "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "tailwind-merge": ["./node_modules/tailwind-merge"],
+      "clsx": ["./node_modules/clsx"],
       "@/*": ["./src/*"],
-      "@djadwal/core": ["../../packages/core/src/index.ts"]
+      "@djadwal/core": ["../../packages/core/src/index.ts"],
+      "@djadwal/ui": ["../../packages/ui/src/index.ts"],
+      "@djadwal/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
