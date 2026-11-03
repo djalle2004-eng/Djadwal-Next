@@ -290,6 +290,8 @@ export default function AvailableRooms() {
           message: 'خطأ في تحميل البيانات الأساسية',
           severity: 'error'
         });
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -362,6 +364,8 @@ export default function AvailableRooms() {
         message: 'خطأ في تحميل الحصص الإضافية',
         severity: 'error'
       });
+    } finally {
+      setLoading(false);
     }
   };
 

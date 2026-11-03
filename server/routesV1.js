@@ -13,6 +13,7 @@ const courseModule = require('./modules/catalog/courses.js');
 const groupModule = require('./modules/catalog/groups.js');
 const profModule = require('./modules/professors/index.js');
 const assignModule = require('./modules/assignments/index.js');
+const extraSessionModule = require('./modules/extra-sessions/index.js');
 const acadModule = require('./modules/academic/index.js');
 const userModule = require('./modules/users/index.js');
 const auditModule = require('./modules/audit/index.js');
@@ -74,6 +75,15 @@ router.put('/assignments/:id', validateBody(schemas.updateAssignmentSchema), ass
 router.delete('/assignments/:id', assignModule.deleteAssignment);
 router.post('/assignments/swap', validateBody(schemas.swapAssignmentSchema), assignModule.swapAssignments);
 router.post('/assignments/:id/move', validateBody(schemas.moveAssignmentSchema), assignModule.moveAssignment);
+
+// 8.5 Extra Sessions (Makeup, Extra, Exams)
+router.get('/extra-sessions', extraSessionModule.listExtraSessions);
+router.post('/extra-sessions', validateBody(schemas.createExtraSessionSchema), extraSessionModule.createExtraSession);
+router.get('/extra-sessions/:id', extraSessionModule.getExtraSession);
+router.put('/extra-sessions/:id', validateBody(schemas.updateExtraSessionSchema), extraSessionModule.updateExtraSession);
+router.delete('/extra-sessions/:id', extraSessionModule.deleteExtraSession);
+router.post('/extra-sessions/archive', extraSessionModule.archivePastSessions);
+router.post('/extra-sessions/check-conflicts', extraSessionModule.checkConflictsEndpoint);
 
 // 9. Academic Years & Semesters
 router.get('/academic/years', acadModule.listAcademicYears);

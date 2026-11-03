@@ -150,3 +150,37 @@ export const moveAssignmentSchema = z.object({
   version: z.coerce.number().int().optional()
 });
 
+export const createExtraSessionSchema = z.object({
+  group_id: z.coerce.number().int().optional().nullable(),
+  course_id: z.coerce.number().int({ message: 'معرف المقياس مطلوب' }),
+  professor_id: z.coerce.number().int({ message: 'معرف الأستاذ مطلوب' }),
+  room_id: z.coerce.number().int({ message: 'معرف القاعة مطلوب' }),
+  session_date: z.string().min(8, 'تاريخ الحصة مطلوب (YYYY-MM-DD)'),
+  start_time: z.string().regex(/^\d{1,2}:\d{2}$/, 'توقيت البداية غير صالح (HH:mm)'),
+  end_time: z.string().regex(/^\d{1,2}:\d{2}$/, 'توقيت النهاية غير صالح (HH:mm)'),
+  session_type: z.string().optional().default('makeup'),
+  description: z.string().optional().default(''),
+  academic_year: z.string().optional().default(''),
+  semester: z.string().optional().default(''),
+  reason: z.string().optional().default(''),
+  exam_note: z.string().optional().default('')
+});
+
+export const updateExtraSessionSchema = z.object({
+  group_id: z.coerce.number().int().optional().nullable(),
+  course_id: z.coerce.number().int().optional(),
+  professor_id: z.coerce.number().int().optional(),
+  room_id: z.coerce.number().int().optional(),
+  session_date: z.string().min(8).optional(),
+  start_time: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
+  end_time: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
+  session_type: z.string().optional(),
+  description: z.string().optional(),
+  academic_year: z.string().optional(),
+  semester: z.string().optional(),
+  reason: z.string().optional(),
+  is_archived: z.coerce.number().int().optional(),
+  exam_note: z.string().optional(),
+  version: z.coerce.number().int().optional()
+});
+
