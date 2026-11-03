@@ -26,10 +26,18 @@ function getAllowedOrigins() {
     : [];
 
   const defaults = [
+    'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
+    'http://localhost:4173',
     'http://localhost:5000',
     'http://localhost:5050',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:4173',
+    'http://127.0.0.1:5000',
+    'http://127.0.0.1:5050',
     'https://djadwal.onrender.com'
   ];
 
@@ -47,8 +55,18 @@ const corsMiddleware = cors({
     // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Electron file://)
     if (!origin) return callback(null, true);
 
-    if (allowedOriginsList.includes(origin)) {
+    const allowed = getAllowedOrigins();
+    if (allowed.includes(origin)) {
       return callback(null, true);
+    }
+
+    if (!isProduction) {
+      try {
+        const u = new URL(origin);
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          return callback(null, true);
+        }
+      } catch (_) {}
     }
 
     return callback(new Error(`CORS_NOT_ALLOWED: Origin ${origin} is not authorized`));
@@ -61,7 +79,11 @@ const corsMiddleware = cors({
     'Authorization',
     'x-csrf-token',
     'x-user-id',
-    'x-user-name'
+    'x-user-name',
+    'Idempotency-Key',
+    'X-Request-Id',
+    'traceparent',
+    'Accept'
   ]
 });
 

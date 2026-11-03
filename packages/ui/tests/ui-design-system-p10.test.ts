@@ -110,3 +110,4 @@ describe('P10 Arabic-First Design System Verification Suite (@djadwal/ui)', () =
     expect(fs.existsSync(legacyFontPath)).toBe(true);
   });
 });
+

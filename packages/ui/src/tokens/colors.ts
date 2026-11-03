@@ -82,3 +82,4 @@ export const colors = {
 } as const;
 
 export type ColorPalette = typeof colors;
+

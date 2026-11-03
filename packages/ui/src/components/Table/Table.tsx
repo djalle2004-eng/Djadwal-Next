@@ -70,3 +70,4 @@ export function TableCell({ className, children, ...props }: React.TdHTMLAttribu
     </td>
   );
 }
+

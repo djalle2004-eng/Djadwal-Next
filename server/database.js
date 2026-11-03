@@ -72,14 +72,30 @@ function toPostgresQuery(query) {
 }
 
 // Convert PostgreSQL placeholders ($1, $2, ...) to SQLite placeholders (?)
-function toSqliteQuery(query) {
+function toSqliteQuery(query, params = null) {
     let sqliteQuery = query;
+    let expandedParams = Array.isArray(params) ? [...params] : null;
+
     if (sqliteQuery.includes('$')) {
-        let index = 1;
-        while (sqliteQuery.includes(`$${index}`)) {
-            sqliteQuery = sqliteQuery.replace(new RegExp(`\\$${index}\\b`, 'g'), '?');
-            index++;
+        if (Array.isArray(params) && params.length > 0) {
+            const newParams = [];
+            sqliteQuery = sqliteQuery.replace(/\$(\d+)\b/g, (match, p1) => {
+                const idx = parseInt(p1, 10) - 1;
+                newParams.push(params[idx] !== undefined ? params[idx] : null);
+                return '?';
+            });
+            expandedParams = newParams;
+        } else {
+            let index = 1;
+            while (sqliteQuery.includes(`$${index}`)) {
+                sqliteQuery = sqliteQuery.replace(new RegExp(`\\$${index}\\b`, 'g'), '?');
+                index++;
+            }
         }
+    }
+
+    if (params !== null) {
+        return { sql: sqliteQuery, params: expandedParams };
     }
     return sqliteQuery;
 }
@@ -268,8 +284,10 @@ async function initDatabaseConnection() {
 
 // Execute query on Turso with automatic retry loop
 async function executeTursoQuery(query, params = [], maxRetries = 2) {
-    const sqliteSql = toSqliteQuery(query);
-    const cleanParams = params.map(p => (p === undefined ? null : p));
+    const cleanInputParams = params.map(p => (p === undefined ? null : p));
+    const converted = toSqliteQuery(query, cleanInputParams);
+    const sqliteSql = typeof converted === 'object' ? converted.sql : converted;
+    const cleanParams = typeof converted === 'object' ? converted.params : cleanInputParams;
 
     let lastError = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

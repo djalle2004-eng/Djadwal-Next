@@ -96,3 +96,4 @@ export function TabContent({ value, className, children, ...props }: TabContentP
     </div>
   );
 }
+

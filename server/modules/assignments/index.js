@@ -16,11 +16,11 @@ async function listAssignments(req, res) {
     if (semester) {
       // تطبيع الأسماء للتعامل مع كشيدة التطويل وتطابق "السداسي" و"الفصل"
       whereClauses.push(`(
-        REPLACE(a.semester, 'ـ', '') = REPLACE($${idx}, 'ـ', '')
-        OR REPLACE(REPLACE(a.semester, 'ـ', ''), 'السداسي', 'الفصل') = REPLACE(REPLACE($${idx}, 'ـ', ''), 'السداسي', 'الفصل')
+        REPLACE(a.semester, 'ـ', '') = REPLACE($${idx++}, 'ـ', '')
+        OR REPLACE(REPLACE(a.semester, 'ـ', ''), 'السداسي', 'الفصل') = REPLACE(REPLACE($${idx++}, 'ـ', ''), 'السداسي', 'الفصل')
       )`);
       params.push(semester);
-      idx++;
+      params.push(semester);
     }
     if (specialization) {
       whereClauses.push(`g.specialization = $${idx++}`);

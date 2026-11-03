@@ -24,3 +24,4 @@ export function Skeleton({ className, variant = 'rounded', ...props }: SkeletonP
     />
   );
 }
+

@@ -70,3 +70,4 @@ export function Drawer({ open, onClose, children, side = 'end', title, className
     </div>
   );
 }
+

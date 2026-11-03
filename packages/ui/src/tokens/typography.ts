@@ -22,3 +22,4 @@ export const typography = {
     extrabold: '800',
   },
 } as const;
+
