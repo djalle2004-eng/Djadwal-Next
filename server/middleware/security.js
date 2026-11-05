@@ -53,21 +53,28 @@ const allowedOriginsList = getAllowedOrigins();
 const corsMiddleware = cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Electron file://)
-    if (!origin) return callback(null, true);
+    if (!origin || origin === 'null') return callback(null, true);
 
     const allowed = getAllowedOrigins();
     if (allowed.includes(origin)) {
       return callback(null, true);
     }
 
-    if (!isProduction) {
-      try {
-        const u = new URL(origin);
-        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
-          return callback(null, true);
-        }
-      } catch (_) {}
-    }
+    try {
+      const u = new URL(origin);
+      if (
+        u.hostname === 'localhost' ||
+        u.hostname === '127.0.0.1' ||
+        u.hostname === '::1' ||
+        u.hostname === '0.0.0.0' ||
+        u.hostname.startsWith('192.168.') ||
+        u.hostname.startsWith('10.') ||
+        u.hostname.endsWith('.local')
+      ) {
+        return callback(null, true);
+      }
+    } catch (_) {}
+    console.warn('[CORS] Rejected unauthorized origin:', origin);
 
     return callback(new Error(`CORS_NOT_ALLOWED: Origin ${origin} is not authorized`));
   },
@@ -82,6 +89,9 @@ const corsMiddleware = cors({
     'x-user-name',
     'Idempotency-Key',
     'X-Request-Id',
+    'API-Version',
+    'api-version',
+    'X-Requested-With',
     'traceparent',
     'Accept'
   ]

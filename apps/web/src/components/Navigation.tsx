@@ -38,6 +38,7 @@ const coreNavItems = [
   { name: 'الجدول الزمني', href: '/schedule', icon: Calendar },
   { name: 'الحصص والتكليفات', href: '/sessions', icon: CalendarClock },
   { name: 'القاعات المتاحة', href: '/available-rooms', icon: Search },
+  { name: 'أعباء الأساتذة', href: '/professor-workload', icon: ClipboardList },
   { name: 'الطباعة', href: '/print', icon: Printer },
   { name: 'نظام التصميم', href: '/design-system', icon: Sparkles },
 ];
