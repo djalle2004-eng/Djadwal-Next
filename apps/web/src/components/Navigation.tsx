@@ -37,6 +37,8 @@ const coreNavItems = [
   { name: 'الأفواج', href: '/groups', icon: Users2 },
   { name: 'الجدول الزمني', href: '/schedule', icon: Calendar },
   { name: 'الحصص والتكليفات', href: '/sessions', icon: CalendarClock },
+  { name: 'تبديل الحصص', href: '/sessions/swap', icon: ArrowLeftRight },
+  { name: 'نقل الحصص', href: '/sessions/move', icon: Move },
   { name: 'القاعات المتاحة', href: '/available-rooms', icon: Search },
   { name: 'أعباء الأساتذة', href: '/professor-workload', icon: ClipboardList },
   { name: 'الطباعة', href: '/print', icon: Printer },

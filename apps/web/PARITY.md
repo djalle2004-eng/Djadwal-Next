@@ -32,7 +32,7 @@
 | **9. تسجيل الدخول (Login)** | `/login` | `/login` | **مكتمل 100%** | جلسة مشتركة عبر الكوكيز الآمنة (`token` / `__Host-token`) | مسار متوافق وموحد |
 | **10. القاعات المتاحة والتعويضات** | `/available-rooms` | `/available-rooms` و`/legacy/available-rooms` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | محرك فحص الشغور اللحظي + كشف التعارضات الذري + مصفوفة القاعات + طباعة الإعلانات والتقارير | Idempotency-Key + OCC version + `/api/v1/extra-sessions` |
 | **11. أعباء الأساتذة والطباعة الفردية** | `/professor-workload` | `/professor-workload` و`/legacy/professor-workload` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | حساب النصاب القانوني والساعات الإضافية + كشف المقاييس الفردي + طباعة بطاقة العبء والكشف الإجمالي وتصدير CSV | `/api/v1` Client + استجابة لحظية |
-| **12. تبديل الحصص ونقلها** | `/session-swap`, `/session-move` | `/legacy/session-swap`, `/legacy/session-move` | **مخدوم بالكامل من النظام المعتمد** | تبديل ونقل الحصص التفاعلي مع كشف التعارضات | واجهة كاملة 100% |
+| **12. تبديل الحصص ونقلها** | `/session-swap`, `/session-move` | `/sessions/swap`, `/sessions/move` و`/legacy/session-swap`, `/legacy/session-move` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | تبديل ذري ونقل حصص مع كشف التعارضات الثلاثي لحظياً (الأستاذ، الفوج، القاعة) + مستكشف القاعات الشاغرة التفاعلي | Idempotency-Key + OCC + UnitOfWork عبر `/api/v1/assignments/swap` و`/api/v1/assignments/:id/move` |
 | **13. جداول الأفواج** | `/group-schedules` | `/legacy/group-schedules` | **مخدوم بالكامل من النظام المعتمد** | استعراض وطباعة جداول الدفعات والأفواج التخصصية | واجهة كاملة 100% |
 
 ---

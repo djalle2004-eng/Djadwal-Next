@@ -1119,8 +1119,8 @@ export default function ProfessorWorkloadPage() {
                 {printType === 'individual'
                   ? 'بطاقة العبء البيداغوجي الفردية (Fiche de Service)'
                   : printType === 'individual_schedule'
-                  ? 'جدول التوقيت الأسبوعي للأستاذ'
-                  : 'الكشف الإجمالي لأعباء ونصاب أساتذة القسم (État Récapitulatif)'}
+                    ? 'جدول التوقيت الأسبوعي للأستاذ'
+                    : 'الكشف الإجمالي لأعباء ونصاب أساتذة القسم (État Récapitulatif)'}
               </span>
             </DialogTitle>
             <Button
@@ -1304,4 +1304,3 @@ export default function ProfessorWorkloadPage() {
     </div>
   );
 }
-

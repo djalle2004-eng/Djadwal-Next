@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Calendar,
   Search,
@@ -252,7 +253,21 @@ export default function SessionsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/sessions/swap"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors shadow-sm"
+          >
+            <ArrowRightLeft className="w-4 h-4 text-blue-600" />
+            <span>تبديل الحصص</span>
+          </Link>
+          <Link
+            href="/sessions/move"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors shadow-sm"
+          >
+            <Move className="w-4 h-4 text-emerald-600" />
+            <span>نقل الحصص</span>
+          </Link>
           <button
             onClick={loadSessions}
             disabled={loading}

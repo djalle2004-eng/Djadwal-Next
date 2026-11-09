@@ -92,7 +92,7 @@ const createAssignmentSchema = z.object({
   course_id: z.coerce.number().int({ message: 'معرف المقياس مطلوب' }),
   professor_id: z.coerce.number().int({ message: 'معرف الأستاذ مطلوب' }),
   room_id: z.coerce.number().int({ message: 'معرف القاعة مطلوب' }),
-  day_of_week: z.coerce.number().int().min(1).max(7, 'اليوم يجب أن يكون بين 1 و 7'),
+  day_of_week: z.coerce.number().int().min(0).max(6, 'اليوم يجب أن يكون بين 0 و 6'),
   start_time: z.string().regex(/^\d{1,2}:\d{2}$/, 'توقيت البداية غير صالح (HH:mm)'),
   end_time: z.string().regex(/^\d{1,2}:\d{2}$/, 'توقيت النهاية غير صالح (HH:mm)'),
   academic_year: z.string().optional().default(''),
@@ -106,7 +106,7 @@ const updateAssignmentSchema = z.object({
   course_id: z.coerce.number().int().optional(),
   professor_id: z.coerce.number().int().optional(),
   room_id: z.coerce.number().int().optional(),
-  day_of_week: z.coerce.number().int().min(1).max(7).optional(),
+  day_of_week: z.coerce.number().int().min(0).max(6).optional(),
   start_time: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
   end_time: z.string().regex(/^\d{1,2}:\d{2}$/).optional(),
   academic_year: z.string().optional(),
@@ -122,7 +122,7 @@ const swapAssignmentSchema = z.object({
 });
 
 const moveAssignmentSchema = z.object({
-  day_of_week: z.coerce.number().int().min(1).max(7),
+  day_of_week: z.coerce.number().int().min(0).max(6),
   start_time: z.string().regex(/^\d{1,2}:\d{2}$/),
   end_time: z.string().regex(/^\d{1,2}:\d{2}$/),
   room_id: z.coerce.number().int().optional(),
