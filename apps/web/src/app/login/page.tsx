@@ -25,10 +25,11 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      // Call modern API v1 login or unified auth endpoint
-      const response = await fetch('/api/v1/auth/login', {
+      // Call the unified auth endpoint (proxied via Next.js rewrite → localhost:3001)
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           username,
           password,

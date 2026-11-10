@@ -20,6 +20,7 @@ import {
   Copy,
   Check,
   Eye,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Button,
@@ -123,23 +124,42 @@ export default function SchedulePage() {
   // Print Modal
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [assignRes, groupsRes, profsRes, roomsRes] = await Promise.all([
+      const results = await Promise.allSettled([
         api.get(`/assignments?academicYear=${encodeURIComponent(academicYear)}&semester=${encodeURIComponent(semester)}&limit=2000`),
         api.get('/groups?limit=500'),
         api.get('/professors?limit=500'),
         api.get('/rooms?limit=500'),
       ]);
 
-      if (Array.isArray(assignRes)) setAssignments(assignRes);
-      if (Array.isArray(groupsRes)) setGroups(groupsRes);
-      if (Array.isArray(profsRes)) setProfessors(profsRes);
-      if (Array.isArray(roomsRes)) setRooms(roomsRes);
+      const [assignRes, groupsRes, profsRes, roomsRes] = results;
+
+      if (assignRes.status === 'fulfilled' && Array.isArray(assignRes.value)) {
+        setAssignments(assignRes.value);
+      }
+      if (groupsRes.status === 'fulfilled' && Array.isArray(groupsRes.value)) {
+        setGroups(groupsRes.value);
+      }
+      if (profsRes.status === 'fulfilled' && Array.isArray(profsRes.value)) {
+        setProfessors(profsRes.value);
+      }
+      if (roomsRes.status === 'fulfilled' && Array.isArray(roomsRes.value)) {
+        setRooms(roomsRes.value);
+      }
+
+      // Check if critical calls failed
+      if (assignRes.status === 'rejected' || groupsRes.status === 'rejected') {
+        const firstErr: any = assignRes.status === 'rejected' ? assignRes.reason : (groupsRes as any).reason;
+        setError(firstErr?.messageAr || firstErr?.message || 'تعذر جلب بيانات الجدول الزمني من الخادم.');
+      }
     } catch (err: any) {
       console.error('Failed to load schedule data:', err);
+      setError(err?.messageAr || err?.message || 'تعذر الاتصال بالخادم.');
     } finally {
       setLoading(false);
     }
@@ -315,6 +335,30 @@ export default function SchedulePage() {
           </button>
         </div>
       </div>
+
+      {/* Backend connection error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start justify-between gap-4 text-red-900 no-print">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-sm">تعذر الاتصال بالخادم لجلب بيانات الجدول</h4>
+              <p className="text-xs text-red-700 mt-1">{error}</p>
+              <p className="text-xs text-red-600 mt-1">
+                تأكد من تشغيل خادم Node.js على المنفذ 3001 عبر تشغيل: <code className="bg-red-100 px-1 py-0.5 rounded font-mono font-bold">npm run dev</code> في المجلد الرئيسي.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            className="border-red-300 text-red-700 hover:bg-red-100 shrink-0"
+          >
+            إعادة المحاولة
+          </Button>
+        </div>
+      )}
 
       {/* 2. Control Bar: Advanced Filters & Entity Switcher */}
       <Card className="no-print border-slate-200 shadow-sm">

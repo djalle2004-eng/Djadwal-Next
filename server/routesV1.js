@@ -18,6 +18,7 @@ const acadModule = require('./modules/academic/index.js');
 const userModule = require('./modules/users/index.js');
 const auditModule = require('./modules/audit/index.js');
 const compatModule = require('./modules/compat/index.js');
+const authModule = require('./modules/auth/index.js');
 
 // 1. Core V1 Middlewares
 router.use(traceMiddleware);
@@ -29,6 +30,13 @@ router.get('/ping', (req, res) => {
 });
 
 router.get('/compat-report', compatModule.getCompatReport);
+
+// 2.5 Authentication & Session Routes
+router.post('/auth/signin', authModule.handleSignin);
+router.post('/auth/login', authModule.handleSignin);
+router.post('/auth/signout', authModule.handleSignout);
+router.post('/auth/logout', authModule.handleSignout);
+router.post('/auth/refresh', authModule.handleRefresh);
 
 // 3. Catalog - Departments
 router.get(['/catalog/departments', '/departments'], deptModule.listDepartments);

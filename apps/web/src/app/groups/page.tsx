@@ -16,6 +16,7 @@ import {
   Building2,
   CheckCircle2,
   CalendarDays,
+  AlertCircle,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import DeleteImpactModal from '@/components/DeleteImpactModal';
@@ -66,9 +67,11 @@ export default function GroupsPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadGroups = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.get('/groups?limit=500');
       if (Array.isArray(data)) {
@@ -76,6 +79,7 @@ export default function GroupsPage() {
       }
     } catch (err: any) {
       console.error('Failed to load groups:', err);
+      setError(err?.messageAr || err?.message || 'تعذر الاتصال بالخادم. يرجى التحقق من تشغيل الخادم الخلفي.');
     } finally {
       setLoading(false);
     }
@@ -249,6 +253,28 @@ export default function GroupsPage() {
           <strong>تنبيه:</strong> لإدارة الأفواج والتخصصات مع جداول الأفواج ومصفوفة الحصص الكاملة، يمكنك التبديل مباشرة إلى <a href="/legacy/groups" className="underline font-bold hover:text-amber-700">الواجهة الكلاسيكية المكتملة</a> أو تصفح <a href="/legacy/group-schedules" className="underline font-bold hover:text-amber-700">جداول الأفواج</a>.
         </div>
       </div>
+
+      {/* Backend connection error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start justify-between gap-4 text-red-900">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-sm">تعذر الاتصال بالخادم الخلفي (Backend Server)</h4>
+              <p className="text-xs text-red-700 mt-1">{error}</p>
+              <p className="text-xs text-red-600 mt-1">
+                تأكد من تشغيل خادم Node.js على المنفذ 3001 عبر تشغيل الأمر: <code className="bg-red-100 px-1 py-0.5 rounded font-mono font-bold">npm run dev</code> أو <code className="bg-red-100 px-1 py-0.5 rounded font-mono font-bold">npm run server</code> من المجلد الرئيسي للمشروع.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={loadGroups}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition-colors shrink-0"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
 
       {/* Filters & Search */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
