@@ -31,31 +31,31 @@ router.get('/ping', (req, res) => {
 router.get('/compat-report', compatModule.getCompatReport);
 
 // 3. Catalog - Departments
-router.get('/catalog/departments', deptModule.listDepartments);
+router.get(['/catalog/departments', '/departments'], deptModule.listDepartments);
 router.post('/catalog/departments', validateBody(schemas.createDepartmentSchema), deptModule.createDepartment);
-router.get('/catalog/departments/:id', deptModule.getDepartment);
+router.get(['/catalog/departments/:id', '/departments/:id'], deptModule.getDepartment);
 router.put('/catalog/departments/:id', validateBody(schemas.updateDepartmentSchema), deptModule.updateDepartment);
 router.delete('/catalog/departments/:id', deptModule.deleteDepartment);
 router.post('/catalog/departments/:id/archive-cascade', deptModule.archiveCascadeDepartment);
 
 // 4. Catalog - Rooms
-router.get('/catalog/rooms', roomModule.listRooms);
+router.get(['/catalog/rooms', '/rooms'], roomModule.listRooms);
 router.post('/catalog/rooms', validateBody(schemas.createRoomSchema), roomModule.createRoom);
-router.get('/catalog/rooms/:id', roomModule.getRoom);
+router.get(['/catalog/rooms/:id', '/rooms/:id'], roomModule.getRoom);
 router.put('/catalog/rooms/:id', validateBody(schemas.updateRoomSchema), roomModule.updateRoom);
 router.delete('/catalog/rooms/:id', roomModule.deleteRoom);
 
 // 5. Catalog - Courses
-router.get('/catalog/courses', courseModule.listCourses);
+router.get(['/catalog/courses', '/courses'], courseModule.listCourses);
 router.post('/catalog/courses', validateBody(schemas.createCourseSchema), courseModule.createCourse);
-router.get('/catalog/courses/:id', courseModule.getCourse);
+router.get(['/catalog/courses/:id', '/courses/:id'], courseModule.getCourse);
 router.put('/catalog/courses/:id', validateBody(schemas.updateCourseSchema), courseModule.updateCourse);
 router.delete('/catalog/courses/:id', courseModule.deleteCourse);
 
 // 6. Catalog - Groups
-router.get('/catalog/groups', groupModule.listGroups);
+router.get(['/catalog/groups', '/groups'], groupModule.listGroups);
 router.post('/catalog/groups', validateBody(schemas.createGroupSchema), groupModule.createGroup);
-router.get('/catalog/groups/:id', groupModule.getGroup);
+router.get(['/catalog/groups/:id', '/groups/:id'], groupModule.getGroup);
 router.put('/catalog/groups/:id', validateBody(schemas.updateGroupSchema), groupModule.updateGroup);
 router.delete('/catalog/groups/:id', groupModule.deleteGroup);
 

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Users,
   Search,
@@ -14,6 +15,7 @@ import {
   GraduationCap,
   Building2,
   CheckCircle2,
+  CalendarDays,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import DeleteImpactModal from '@/components/DeleteImpactModal';
@@ -202,10 +204,18 @@ export default function GroupsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/groups/schedules"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-sm font-semibold transition-colors shadow-sm"
+            title="استعراض وطباعة الجداول الزمنية للأفواج"
+          >
+            <CalendarDays className="w-4 h-4 text-blue-600" />
+            <span>جداول توقيت الأفواج</span>
+          </Link>
           <a
             href="/legacy/groups"
-            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm"
             title="الانتقال إلى نظام الأفواج والتخصصات الكامل في الواجهة الكلاسيكية"
           >
             <span>الأفواج (الواجهة المعتمدة)</span>
