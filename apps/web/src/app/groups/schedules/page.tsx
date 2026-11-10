@@ -211,18 +211,65 @@ export default function GroupSchedulesPage() {
     return groups.find((g) => String(g.id) === selectedGroupId);
   }, [groups, selectedGroupId]);
 
-  // Assignments for a specific group
+  const [includeLectures, setIncludeLectures] = useState(true);
+
+  // Helper to identify if an assignment is a lecture (محاضرة)
+  const isLectureSession = (a: Assignment) => {
+    if (a.session_type === 'cours' || a.session_type === 'lecture') return true;
+    if (a.group_name && (a.group_name.includes('محاضرة') || a.group_name.includes('الدفعة') || a.group_name.includes('lecture'))) return true;
+    const g = groups.find((item) => item.id === a.group_id);
+    if (g && (g.group_type === 'lecture_group' || g.group_type === 'section' || g.name?.includes('محاضرة'))) return true;
+    return false;
+  };
+
+  // Helper to check if an assignment belongs to a group's specialization
+  const matchesGroupSpecialization = (a: Assignment, targetGroup: any) => {
+    if (!targetGroup) return false;
+    if (a.specialization && targetGroup.specialization) {
+      return a.specialization === targetGroup.specialization;
+    }
+    const g = groups.find((item) => item.id === a.group_id);
+    if (g && g.specialization && targetGroup.specialization) {
+      return g.specialization === targetGroup.specialization;
+    }
+    if (g && g.year && targetGroup.year && g.year === targetGroup.year) {
+      return true;
+    }
+    if (g && (!g.specialization || g.specialization === '') && g.department_id === targetGroup.department_id) {
+      return true;
+    }
+    return false;
+  };
+
+  // Assignments for a specific group (with lectures included)
   const getGroupAssignments = (groupId: number) => {
-    return assignments.filter((a) => a.group_id === groupId);
+    const targetGroup = groups.find((g) => g.id === groupId);
+    return assignments.filter((a) => {
+      if (a.group_id === groupId) return true;
+      if (includeLectures && targetGroup && isLectureSession(a)) {
+        return matchesGroupSpecialization(a, targetGroup);
+      }
+      return false;
+    });
   };
 
   // Find assignments for a specific group, day, and slot
   const getCellAssignments = (groupId: number, dayId: number, slot: typeof TIME_SLOTS[0]) => {
+    const targetGroup = groups.find((g) => g.id === groupId);
     return assignments.filter((a) => {
-      if (a.group_id !== groupId) return false;
       const dayNum = normalizeDay(a.day_of_week);
       if (dayNum !== dayId) return false;
-      return matchesSlot(a.start_time, slot.start, slot.end);
+      if (!matchesSlot(a.start_time, slot.start, slot.end)) return false;
+
+      // 1. Direct group session (TD / TP)
+      if (a.group_id === groupId) return true;
+
+      // 2. Lecture session for this group's specialization
+      if (includeLectures && targetGroup && isLectureSession(a)) {
+        return matchesGroupSpecialization(a, targetGroup);
+      }
+
+      return false;
     });
   };
 
@@ -424,6 +471,16 @@ export default function GroupSchedulesPage() {
 
             {/* Quick Summary Badges */}
             <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 cursor-pointer bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg text-xs font-semibold text-blue-900 hover:bg-blue-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={includeLectures}
+                  onChange={(e) => setIncludeLectures(e.target.checked)}
+                  className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>تضمين المحاضرات العامة للتخصص</span>
+              </label>
+
               <Badge variant="neutral" className="gap-1">
                 <Users className="w-3.5 h-3.5" />
                 <span>إجمالي الأفواج: {filteredGroups.length}</span>
@@ -536,12 +593,11 @@ export default function GroupSchedulesPage() {
                           ) : (
                             <div className="space-y-1">
                               {cellSessions.map((session) => {
-                                const isLecture =
-                                  session.session_type === 'cours' ||
-                                  (session.group_name && session.group_name.includes('محاضرة'));
+                                const isLecture = isLectureSession(session);
                                 const isTD =
-                                  session.session_type === 'td' ||
-                                  (session.group_name && session.group_name.includes('TD'));
+                                  !isLecture &&
+                                  (session.session_type === 'td' ||
+                                    (session.group_name && session.group_name.toLowerCase().includes('td')));
 
                                 return (
                                   <div
@@ -549,23 +605,32 @@ export default function GroupSchedulesPage() {
                                     onClick={() => setActiveSession(session)}
                                     className={`p-2 rounded-xl border text-xs cursor-pointer transition-all shadow-sm ${
                                       isLecture
-                                        ? 'bg-blue-50 border-blue-200 hover:border-blue-300 text-blue-900'
+                                        ? 'bg-blue-50/95 border-blue-300 hover:border-blue-400 text-blue-950 ring-1 ring-blue-300/40'
                                         : isTD
                                         ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-300 text-emerald-900'
                                         : 'bg-purple-50 border-purple-200 hover:border-purple-300 text-purple-900'
                                     }`}
                                   >
-                                    <div className="font-bold truncate" title={session.course_name}>
-                                      {session.course_name || 'مقياس'}
+                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                      <span className="font-bold truncate text-[11px]" title={session.course_name}>
+                                        {session.course_name || 'مقياس'}
+                                      </span>
+                                      <span
+                                        className={`px-1 rounded text-[9px] font-bold ${
+                                          isLecture ? 'bg-blue-200 text-blue-900' : 'bg-slate-200 text-slate-800'
+                                        }`}
+                                      >
+                                        {isLecture ? 'محاضرة' : 'TD'}
+                                      </span>
                                     </div>
                                     <div className="text-[11px] text-slate-600 truncate mt-0.5">
                                       {session.professor_name || 'غير محدد'}
                                     </div>
                                     <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 pt-1 border-t border-slate-200/50">
-                                      <span className="font-semibold text-slate-700">
-                                        {isLecture ? 'محاضرة' : 'أعمال موجهة'}
+                                      <span className="font-semibold text-slate-700 truncate max-w-[90px]">
+                                        {isLecture ? (session.group_name || 'محاضرة الدفعة') : (session.group_name || 'أعمال موجهة')}
                                       </span>
-                                      <span className="bg-white/90 px-1.5 py-0.2 rounded font-mono font-bold text-slate-800">
+                                      <span className="bg-white/90 px-1.5 py-0.2 rounded font-mono font-bold text-slate-800 border border-slate-200">
                                         {session.room_name || '—'}
                                       </span>
                                     </div>
@@ -886,9 +951,7 @@ export default function GroupSchedulesPage() {
                                   <span className="text-slate-400 font-light">—</span>
                                 ) : (
                                   cellSessions.map((s) => {
-                                    const isLecture =
-                                      s.session_type === 'cours' ||
-                                      (s.group_name && s.group_name.includes('محاضرة'));
+                                    const isLecture = isLectureSession(s);
                                     return (
                                       <div key={s.id} className="text-[11px] leading-tight">
                                         <div className="font-extrabold text-slate-900">{s.course_name}</div>

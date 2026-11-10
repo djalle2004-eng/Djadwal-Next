@@ -112,7 +112,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [filterType, setFilterType] = useState<'group' | 'professor' | 'room' | 'all'>('group');
+  const [filterType, setFilterType] = useState<'specialization' | 'group' | 'professor' | 'room' | 'all'>('specialization');
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
   const [selectedSpecialization, setSelectedSpecialization] = useState<string>('all');
   const [selectedYearLevel, setSelectedYearLevel] = useState<string>('all');
@@ -180,6 +180,13 @@ export default function SchedulePage() {
     return Array.from(set).sort();
   }, [groups]);
 
+  // Auto-select first specialization if currently 'all'
+  useEffect(() => {
+    if (specializations.length > 0 && selectedSpecialization === 'all') {
+      setSelectedSpecialization(specializations[0]);
+    }
+  }, [specializations, selectedSpecialization]);
+
   // Derived Year Levels (L1, L2, L3, M1, M2...)
   const yearLevels = useMemo(() => {
     const set = new Set<string>();
@@ -200,6 +207,33 @@ export default function SchedulePage() {
     });
   }, [groups, selectedSpecialization, selectedYearLevel]);
 
+  // Helper to identify if an assignment is a lecture (محاضرة)
+  const isLectureSession = (a: Assignment) => {
+    if (a.session_type === 'cours' || a.session_type === 'lecture') return true;
+    if (a.group_name && (a.group_name.includes('محاضرة') || a.group_name.includes('الدفعة') || a.group_name.includes('lecture'))) return true;
+    const g = groups.find((item) => item.id === a.group_id);
+    if (g && (g.group_type === 'lecture_group' || g.group_type === 'section' || g.name?.includes('محاضرة'))) return true;
+    return false;
+  };
+
+  // Helper to check if an assignment belongs to a specialization
+  const matchesSpecialization = (a: Assignment, specName: string) => {
+    if (!specName || specName === 'all') return true;
+    if (a.specialization === specName) return true;
+    const g = groups.find((item) => item.id === a.group_id);
+    if (g && g.specialization === specName) return true;
+    // For lectures with general cohort or empty specialization
+    if (isLectureSession(a)) {
+      if (g && (!g.specialization || g.specialization === '')) {
+        const specGroups = groups.filter((item) => item.specialization === specName);
+        if (specGroups.some((sg) => (sg.department_id && sg.department_id === g.department_id) || (sg.year && sg.year === g.year))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
   // Filtered assignments based on current selection
   const filteredAssignments = useMemo(() => {
     return assignments.filter((a) => {
@@ -209,24 +243,68 @@ export default function SchedulePage() {
         if (dayNum !== Number(selectedDayId)) return false;
       }
 
-      // Entity filter
-      if (filterType === 'all') return true;
+      // 1. View Mode: Specialization (المحاضرات وكافة أفواج التخصص)
+      if (filterType === 'specialization') {
+        if (!matchesSpecialization(a, selectedSpecialization)) return false;
 
-      if (selectedEntityId === 'all') {
-        if (filterType === 'group' && selectedSpecialization !== 'all') {
-          const group = groups.find((g) => g.id === a.group_id);
-          return group && group.specialization === selectedSpecialization;
+        // Level filter
+        if (selectedYearLevel !== 'all') {
+          const g = groups.find((item) => item.id === a.group_id);
+          if (g && g.year && g.year !== selectedYearLevel) return false;
         }
+
+        // Scope within specialization
+        if (selectedEntityId !== 'all') {
+          // If a specific group is chosen within specialization:
+          // Keep all lectures of this specialization + this group's TD/TP!
+          if (isLectureSession(a)) return true;
+          return a.group_id === Number(selectedEntityId);
+        }
+
         return true;
       }
 
-      const entityId = Number(selectedEntityId);
-      if (filterType === 'group') return a.group_id === entityId;
-      if (filterType === 'professor') return a.professor_id === entityId;
-      if (filterType === 'room') return a.room_id === entityId;
+      // 2. View Mode: Group (الفوج متضمناً محاضرات التخصص)
+      if (filterType === 'group') {
+        if (selectedEntityId === 'all') {
+          if (selectedSpecialization !== 'all') {
+            return matchesSpecialization(a, selectedSpecialization);
+          }
+          return true;
+        }
+        const targetGroupId = Number(selectedEntityId);
+        const targetGroup = groups.find((g) => g.id === targetGroupId);
+
+        // Group's own sessions (TD, TP, etc.)
+        if (a.group_id === targetGroupId) return true;
+
+        // Automatically include the lectures of this group's specialization
+        if (targetGroup && isLectureSession(a)) {
+          return matchesSpecialization(a, targetGroup.specialization || '');
+        }
+
+        return false;
+      }
+
+      // 3. View Mode: Professor
+      if (filterType === 'professor') {
+        if (selectedEntityId === 'all') return true;
+        return a.professor_id === Number(selectedEntityId);
+      }
+
+      // 4. View Mode: Room
+      if (filterType === 'room') {
+        if (selectedEntityId === 'all') return true;
+        return a.room_id === Number(selectedEntityId);
+      }
+
+      // 5. Comprehensive (All)
+      if (selectedSpecialization !== 'all') {
+        return matchesSpecialization(a, selectedSpecialization);
+      }
       return true;
     });
-  }, [assignments, filterType, selectedEntityId, selectedDayId, selectedSpecialization, groups]);
+  }, [assignments, filterType, selectedEntityId, selectedDayId, selectedSpecialization, selectedYearLevel, groups]);
 
   // Find assignments for a specific day and time slot
   const getCellAssignments = (dayId: number, slot: typeof TIME_SLOTS[0]) => {
@@ -239,16 +317,24 @@ export default function SchedulePage() {
 
   // Selected Entity Name for Header / Print
   const currentEntityName = useMemo(() => {
+    if (filterType === 'specialization') {
+      const specLabel = selectedSpecialization === 'all' ? 'كافة التخصصات' : `تخصص ${selectedSpecialization}`;
+      if (selectedEntityId !== 'all') {
+        const g = groups.find((item) => item.id === Number(selectedEntityId));
+        return `جدول ${specLabel} — ${g ? g.name : 'فوج محدد'} (محاضرات + الفوج)`;
+      }
+      return `جدول استعمال الزمن لـ: ${specLabel} (المحاضرات وكافة الأفواج)`;
+    }
     if (filterType === 'all' || selectedEntityId === 'all') {
       if (filterType === 'group' && selectedSpecialization !== 'all') {
-        return `تخصص: ${selectedSpecialization}`;
+        return `تخصص: ${selectedSpecialization} (المحاضرات وجميع الأفواج)`;
       }
       return 'العرض الشامل لكافة الأقسام';
     }
     const id = Number(selectedEntityId);
     if (filterType === 'group') {
       const g = groups.find((item) => item.id === id);
-      return g ? `الفوج: ${g.name} (${g.specialization || ''})` : 'فوج غير محدد';
+      return g ? `الفوج: ${g.name} (${g.specialization || ''}) متضمناً المحاضرات` : 'فوج غير محدد';
     }
     if (filterType === 'professor') {
       const p = professors.find((item) => item.id === id);
@@ -394,7 +480,20 @@ export default function SchedulePage() {
             {/* View By Entity Type */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">نوع العرض</label>
-              <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+              <div className="grid grid-cols-5 gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterType('specialization');
+                    setSelectedEntityId('all');
+                  }}
+                  className={`py-1.5 rounded-lg transition-all ${
+                    filterType === 'specialization' ? 'bg-white text-blue-700 shadow-sm font-bold' : 'text-slate-600'
+                  }`}
+                  title="عرض جدول التخصص الموحد (المحاضرات وكافة الأفواج)"
+                >
+                  تخصص
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -402,8 +501,9 @@ export default function SchedulePage() {
                     setSelectedEntityId('all');
                   }}
                   className={`py-1.5 rounded-lg transition-all ${
-                    filterType === 'group' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'
+                    filterType === 'group' ? 'bg-white text-blue-700 shadow-sm font-bold' : 'text-slate-600'
                   }`}
+                  title="عرض جدول الفوج مع محاضرات التخصص"
                 >
                   أفواج
                 </button>
@@ -414,7 +514,7 @@ export default function SchedulePage() {
                     setSelectedEntityId('all');
                   }}
                   className={`py-1.5 rounded-lg transition-all ${
-                    filterType === 'professor' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'
+                    filterType === 'professor' ? 'bg-white text-blue-700 shadow-sm font-bold' : 'text-slate-600'
                   }`}
                 >
                   أساتذة
@@ -426,7 +526,7 @@ export default function SchedulePage() {
                     setSelectedEntityId('all');
                   }}
                   className={`py-1.5 rounded-lg transition-all ${
-                    filterType === 'room' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'
+                    filterType === 'room' ? 'bg-white text-blue-700 shadow-sm font-bold' : 'text-slate-600'
                   }`}
                 >
                   قاعات
@@ -438,7 +538,7 @@ export default function SchedulePage() {
                     setSelectedEntityId('all');
                   }}
                   className={`py-1.5 rounded-lg transition-all ${
-                    filterType === 'all' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'
+                    filterType === 'all' ? 'bg-white text-blue-700 shadow-sm font-bold' : 'text-slate-600'
                   }`}
                 >
                   شامل
@@ -446,89 +546,138 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {/* Entity Dropdown */}
+            {/* Entity Dropdown 1 (Specialization or Main Entity) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                {filterType === 'group'
-                  ? 'اختر الفوج'
-                  : filterType === 'professor'
-                  ? 'اختر الأستاذ'
-                  : filterType === 'room'
-                  ? 'اختر القاعة'
-                  : 'العرض الشامل'}
-              </label>
-              <select
-                value={selectedEntityId}
-                onChange={(e) => setSelectedEntityId(e.target.value)}
-                disabled={filterType === 'all'}
-                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 disabled:text-slate-400"
-              >
-                <option value="all">
-                  {filterType === 'group'
-                    ? 'جميع الأفواج'
-                    : filterType === 'professor'
-                    ? 'جميع الأساتذة'
-                    : filterType === 'room'
-                    ? 'جميع القاعات'
-                    : 'كافة الحصص المسجلة'}
-                </option>
-                {filterType === 'group' &&
-                  filteredGroups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name} {g.specialization ? `(${g.specialization})` : ''}
+              {filterType === 'specialization' ? (
+                <>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    اختر التخصص (المحاضرات والأفواج)
+                  </label>
+                  <select
+                    value={selectedSpecialization}
+                    onChange={(e) => {
+                      setSelectedSpecialization(e.target.value);
+                      setSelectedEntityId('all');
+                    }}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="all">كافة التخصصات (شامل)</option>
+                    {specializations.map((spec) => (
+                      <option key={spec} value={spec}>
+                        {spec}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    {filterType === 'group'
+                      ? 'اختر الفوج (يتضمن المحاضرات)'
+                      : filterType === 'professor'
+                      ? 'اختر الأستاذ'
+                      : filterType === 'room'
+                      ? 'اختر القاعة'
+                      : 'العرض الشامل'}
+                  </label>
+                  <select
+                    value={selectedEntityId}
+                    onChange={(e) => setSelectedEntityId(e.target.value)}
+                    disabled={filterType === 'all'}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="all">
+                      {filterType === 'group'
+                        ? 'جميع الأفواج'
+                        : filterType === 'professor'
+                        ? 'جميع الأساتذة'
+                        : filterType === 'room'
+                        ? 'جميع القاعات'
+                        : 'كافة الحصص المسجلة'}
                     </option>
-                  ))}
-                {filterType === 'professor' &&
-                  professors.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                {filterType === 'room' &&
-                  rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} ({r.type || 'قاعة'})
-                    </option>
-                  ))}
-              </select>
+                    {filterType === 'group' &&
+                      filteredGroups.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name} {g.specialization ? `(${g.specialization})` : ''}
+                        </option>
+                      ))}
+                    {filterType === 'professor' &&
+                      professors.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    {filterType === 'room' &&
+                      rooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} ({r.type || 'قاعة'})
+                        </option>
+                      ))}
+                  </select>
+                </>
+              )}
             </div>
 
-            {/* Day Filter */}
+            {/* Entity Dropdown 2 (Group Scope or Day Filter) */}
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">تصفية اليوم</label>
-              <select
-                value={selectedDayId}
-                onChange={(e) => setSelectedDayId(e.target.value)}
-                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                <option value="all">كافة أيام الأسبوع (السبت - الخميس)</option>
-                {DAYS.map((d) => (
-                  <option key={d.id} value={String(d.id)}>
-                    يوم {d.name}
-                  </option>
-                ))}
-              </select>
+              {filterType === 'specialization' ? (
+                <>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    نطاق الأفواج داخل التخصص
+                  </label>
+                  <select
+                    value={selectedEntityId}
+                    onChange={(e) => setSelectedEntityId(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="all">المحاضرات وكافة الأفواج (جدول موحد)</option>
+                    {filteredGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} (محاضرات التخصص + الفوج)
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">تصفية اليوم</label>
+                  <select
+                    value={selectedDayId}
+                    onChange={(e) => setSelectedDayId(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm bg-white font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="all">كافة أيام الأسبوع (السبت - الخميس)</option>
+                    {DAYS.map((d) => (
+                      <option key={d.id} value={String(d.id)}>
+                        يوم {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Secondary Filter Row (for Specialization & Level when group view is active) */}
-          {filterType === 'group' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية حسب التخصص</label>
-                <select
-                  value={selectedSpecialization}
-                  onChange={(e) => setSelectedSpecialization(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700"
-                >
-                  <option value="all">كافة التخصصات ({specializations.length})</option>
-                  {specializations.map((spec) => (
-                    <option key={spec} value={spec}>
-                      {spec}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {/* Secondary Filter Row (for Specialization & Level & Day) */}
+          {(filterType === 'group' || filterType === 'specialization') && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100">
+              {filterType === 'group' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية حسب التخصص</label>
+                  <select
+                    value={selectedSpecialization}
+                    onChange={(e) => setSelectedSpecialization(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700"
+                  >
+                    <option value="all">كافة التخصصات ({specializations.length})</option>
+                    {specializations.map((spec) => (
+                      <option key={spec} value={spec}>
+                        {spec}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">المستوى الدراسي</label>
@@ -545,6 +694,24 @@ export default function SchedulePage() {
                   ))}
                 </select>
               </div>
+
+              {filterType === 'specialization' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية اليوم</label>
+                  <select
+                    value={selectedDayId}
+                    onChange={(e) => setSelectedDayId(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700"
+                  >
+                    <option value="all">كافة أيام الأسبوع (السبت - الخميس)</option>
+                    {DAYS.map((d) => (
+                      <option key={d.id} value={String(d.id)}>
+                        يوم {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           )}
 
@@ -643,14 +810,13 @@ export default function SchedulePage() {
                               —
                             </div>
                           ) : (
-                            <div className="space-y-1.5 max-h-[140px] overflow-y-auto">
+                            <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
                               {cellSessions.map((session) => {
-                                const isLecture =
-                                  session.session_type === 'cours' ||
-                                  (session.group_name && session.group_name.includes('محاضرة'));
+                                const isLecture = isLectureSession(session);
                                 const isTD =
-                                  session.session_type === 'td' ||
-                                  (session.group_name && session.group_name.includes('TD'));
+                                  !isLecture &&
+                                  (session.session_type === 'td' ||
+                                    (session.group_name && session.group_name.toLowerCase().includes('td')));
 
                                 return (
                                   <button
@@ -659,23 +825,36 @@ export default function SchedulePage() {
                                     onClick={() => setActiveSession(session)}
                                     className={`w-full text-right p-2 rounded-xl border text-xs transition-all shadow-sm block ${
                                       isLecture
-                                        ? 'bg-blue-50/90 border-blue-200 hover:border-blue-300 text-blue-900'
+                                        ? 'bg-blue-50/95 border-blue-300 hover:border-blue-400 text-blue-950 ring-1 ring-blue-300/50'
                                         : isTD
-                                        ? 'bg-emerald-50/90 border-emerald-200 hover:border-emerald-300 text-emerald-900'
-                                        : 'bg-amber-50/90 border-amber-200 hover:border-amber-300 text-amber-900'
+                                        ? 'bg-emerald-50/90 border-emerald-200 hover:border-emerald-300 text-emerald-950'
+                                        : 'bg-amber-50/90 border-amber-200 hover:border-amber-300 text-amber-950'
                                     }`}
                                   >
-                                    <div className="font-bold truncate" title={session.course_name}>
-                                      {session.course_name || 'مقرر بدون اسم'}
+                                    <div className="flex items-center justify-between gap-1 mb-0.5">
+                                      <span className="font-bold truncate text-[11px]" title={session.course_name}>
+                                        {session.course_name || 'مقرر بدون اسم'}
+                                      </span>
+                                      <span
+                                        className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
+                                          isLecture
+                                            ? 'bg-blue-200 text-blue-900'
+                                            : isTD
+                                            ? 'bg-emerald-200 text-emerald-900'
+                                            : 'bg-amber-200 text-amber-900'
+                                        }`}
+                                      >
+                                        {isLecture ? 'محاضرة' : isTD ? 'TD' : 'TP'}
+                                      </span>
                                     </div>
-                                    <div className="text-[11px] text-slate-600 truncate mt-0.5">
+                                    <div className="text-[11px] text-slate-700 truncate mt-0.5">
                                       {session.professor_name || 'غير محدد'}
                                     </div>
-                                    <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 pt-1 border-t border-slate-200/50">
-                                      <span className="font-semibold text-slate-700 truncate max-w-[85px]">
+                                    <div className="flex items-center justify-between text-[10px] text-slate-600 mt-1 pt-1 border-t border-slate-200/50">
+                                      <span className="font-semibold text-slate-800 truncate max-w-[90px]">
                                         {session.group_name || 'الفوج'}
                                       </span>
-                                      <span className="bg-white/90 px-1.5 py-0.2 rounded font-mono font-bold text-slate-800">
+                                      <span className="bg-white px-1.5 py-0.2 rounded font-mono font-bold text-slate-800 border border-slate-200">
                                         {session.room_name || '—'}
                                       </span>
                                     </div>
@@ -802,7 +981,9 @@ export default function SchedulePage() {
             {/* Title & Scope */}
             <div className="text-center my-3">
               <h3 className="text-base font-extrabold text-blue-950 inline-block border-b-2 border-blue-900 pb-0.5">
-                جدول التوقيت الأسبوعي العام
+                {filterType === 'specialization'
+                  ? `جدول استعمال الزمن الخاص بـ: تخصص ${selectedSpecialization} (المحاضرات والأفواج)`
+                  : 'جدول التوقيت الأسبوعي العام'}
               </h3>
               <div className="mt-1.5 text-xs text-slate-800 font-bold">
                 {currentEntityName}
@@ -836,20 +1017,31 @@ export default function SchedulePage() {
                         {TIME_SLOTS.map((slot) => {
                           const cellSessions = getCellAssignments(day.id, slot);
                           return (
-                            <td key={slot.id} className="p-1.5 border border-slate-700 h-[68px] align-middle">
+                            <td key={slot.id} className="p-1.5 border border-slate-700 h-[72px] align-top text-right">
                               {cellSessions.length === 0 ? (
-                                <span className="text-slate-400 font-light">—</span>
+                                <span className="text-slate-400 font-light block text-center mt-4">—</span>
                               ) : (
-                                cellSessions.map((s) => {
-                                  const isLecture =
-                                    s.session_type === 'cours' ||
-                                    (s.group_name && s.group_name.includes('محاضرة'));
+                                cellSessions.map((s, idx) => {
+                                  const isLecture = isLectureSession(s);
                                   return (
-                                    <div key={s.id} className="text-[11px] leading-tight mb-1 last:mb-0">
-                                      <div className="font-extrabold text-slate-900">{s.course_name}</div>
-                                      <div className="text-[10px] text-slate-700 font-medium mt-0.5">{s.professor_name}</div>
-                                      <div className="text-[9px] font-mono font-bold text-blue-900 mt-0.5">
-                                        {s.group_name} | {isLecture ? 'محاضرة' : 'TD'} | {s.room_name || 'قاعة'}
+                                    <div
+                                      key={s.id}
+                                      className={`text-[10px] leading-tight pb-1 mb-1 ${
+                                        idx < cellSessions.length - 1 ? 'border-b border-dashed border-slate-400' : ''
+                                      }`}
+                                    >
+                                      <div className="font-extrabold text-slate-900 flex items-center justify-between">
+                                        <span className="truncate">{s.course_name}</span>
+                                        <span
+                                          className={`font-bold text-[9px] px-1 rounded ${
+                                            isLecture ? 'bg-blue-100 text-blue-900' : 'bg-slate-200 text-slate-800'
+                                          }`}
+                                        >
+                                          {isLecture ? 'محاضرة' : s.group_name}
+                                        </span>
+                                      </div>
+                                      <div className="text-[9px] text-slate-700 font-medium">
+                                        {s.professor_name} | {s.room_name || 'قاعة'}
                                       </div>
                                     </div>
                                   );
