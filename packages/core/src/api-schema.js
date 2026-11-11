@@ -129,6 +129,25 @@ const moveAssignmentSchema = z.object({
   version: z.coerce.number().int().optional()
 });
 
+const checkAssignmentConflictsSchema = z.object({
+  day_of_week: z.coerce.number().int().min(0).max(6),
+  start_time: z.string().regex(/^\d{1,2}:\d{2}$/),
+  end_time: z.string().regex(/^\d{1,2}:\d{2}$/),
+  professor_id: z.coerce.number().int().optional().nullable(),
+  room_id: z.coerce.number().int().optional().nullable(),
+  group_id: z.coerce.number().int().optional().nullable(),
+  academic_year: z.string().optional().default(''),
+  semester: z.string().optional().default(''),
+  exclude_id: z.coerce.number().int().optional().nullable()
+});
+
+const bulkImportAssignmentsSchema = z.object({
+  academic_year: z.string().optional().default(''),
+  semester: z.string().optional().default(''),
+  auto_create_missing: z.boolean().optional().default(false),
+  items: z.array(z.record(z.any())).min(1, 'قائمة التكليفات يجب أن تحتوي على تكليف واحد على الأقل')
+});
+
 const createExtraSessionSchema = z.object({
   group_id: z.coerce.number().int().optional().nullable(),
   course_id: z.coerce.number().int({ message: 'معرف المقياس مطلوب' }),
@@ -180,6 +199,8 @@ module.exports = {
   updateAssignmentSchema,
   swapAssignmentSchema,
   moveAssignmentSchema,
+  checkAssignmentConflictsSchema,
+  bulkImportAssignmentsSchema,
   createExtraSessionSchema,
   updateExtraSessionSchema
 };

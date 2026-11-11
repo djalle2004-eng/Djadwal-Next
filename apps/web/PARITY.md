@@ -1,7 +1,7 @@
-# وثيقة مطابقة واجهة المستخدم (Frontend Parity Record) — المهام P9 & P-Catalog-Management
+# وثيقة مطابقة واجهة المستخدم (Frontend Parity Record) — المهام P9 & P-Assignments-Import
 
 تاريخ التحديث: 11 نوفمبر 2026  
-الفرع: `feat/p-catalog-management-parity`  
+الفرع: `feat/p-assignments-import-parity`  
 المشروع: نظام Djadwal لإدارة الجداول والامتحانات — جامعة الشهيد حمه لخضر بالوادي
 
 ---
@@ -28,7 +28,7 @@
 | **4. المقررات والمقاييس (Courses)** | `/courses` | `/courses` و`/legacy/courses` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | قفل تفاؤلي (`version` / 409) + حذف ناعم مع تقييم الأثر + استعادة المؤرشفات + تراجع | Idempotency-Key + تتبع الحصص (محاضرة/TD/TP) + معاملات وأرصدة + تصدير CSV |
 | **5. الأفواج والدفعات (Groups)** | `/groups` | `/groups` و`/legacy/groups` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | قفل تفاؤلي + حذف ناعم + معاينة الأثر + استعادة المؤرشفات + تراجع ذري | عرض جدولي وهرمي (Tree View) + فلاتر الأطوار والتخصصات + تصدير CSV |
 | **6. جدول التوقيت الأسبوعي (Schedule)** | `/schedule` | `/schedule` و`/legacy/schedule` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | اعتماد الحصص الرسمية الست المتصلة (08:00 إلى 17:00 بدون فواصل شاذة) + وضع العرض الموحد للتخصص (Specialization View) لدمج المحاضرات العامة والأفواج المتوازية معاً + فلاتر متقدمة (تخصص/فوج/أستاذ/قاعة/نوع الحصة/شامل) + شبكة تفاعلية ملونة (محاضرة، TD، TP) + محرك طباعة A4 أفقي رسمي مخصص للتخصص وبترويسة الجامعة | `/api/v1` Client + استجابة فورية |
-| **7. التكليفات والحصص (Sessions)** | `/sessions` | `/sessions` | **مكتمل 100%** | تبديل ذري (`swap`) عبر UnitOfWork + كشف التعارضات | قفل تفاؤلي + تراجع |
+| **7. التكليفات والحصص (Assignments / Sessions)** | `/course-assignments`, `/sessions` | `/assignments` و`/sessions` و`/legacy/course-assignments` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | جدول التكليفات الشامل للعام النشط (1,034 تكليف لـ 2026-2027) + محرك الاستيراد الذري الشامل عبر UnitOfWork + المعاينة والتحقق المسبق (Dry-Run) + كشف التعارضات اللحظي الثلاثي + مدقق الاكتمال البيداغوجي + قفل تفاؤلي + تراجع | Idempotency-Key + Trace-ID + تصدير CSV |
 | **8. مركز الطباعة (Print)** | `/print-settings` | `/print` | **مكتمل 100%** | ترويسة جامعية رسمية ثنائية اللغة + اعتماد الحصص الرسمية الست المتصلة + `@media print` خفيف | خلو تام من مكتبات PDF الثقيلة |
 | **9. تسجيل الدخول (Login)** | `/login` | `/login` | **مكتمل 100%** | جلسة مشتركة عبر الكوكيز الآمنة (`token` / `__Host-token`) | مسار متوافق وموحد |
 | **10. القاعات المتاحة والتعويضات** | `/available-rooms` | `/available-rooms` و`/legacy/available-rooms` | **مكتمل 100% (Native Next.js + @djadwal/ui)** | محرك فحص الشغور اللحظي + كشف التعارضات الذري + مصفوفة القاعات + طباعة الإعلانات والتقارير | Idempotency-Key + OCC version + `/api/v1/extra-sessions` |

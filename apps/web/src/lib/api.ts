@@ -240,6 +240,21 @@ export const api = {
   restore: (entityType: string, id: number | string) =>
     apiFetch(`/${entityType}/${id}/restore`, { method: 'POST' }),
 
+  // Assignments Helpers
+  checkAssignmentConflicts: (data: any) =>
+    apiFetch<any>('/assignments/check-conflicts', { method: 'POST', body: JSON.stringify(data) }),
+
+  previewBulkImport: (data: any) =>
+    apiFetch<any>('/assignments/bulk-import/preview', { method: 'POST', body: JSON.stringify(data) }),
+
+  bulkImportAssignments: (data: any) =>
+    apiFetch<any>('/assignments/bulk-import', { method: 'POST', body: JSON.stringify(data) }),
+
+  getCoverageAudit: (academicYear?: string, semester?: string) =>
+    apiFetch<any>(
+      `/assignments/coverage-audit?academicYear=${encodeURIComponent(academicYear || '')}&semester=${encodeURIComponent(semester || '')}`
+    ),
+
   // Get active database status (P6 Neon / Turso indicator)
   getDatabaseStatus: () =>
     apiFetch<any>('/api/status', { method: 'GET' }).catch(() => ({

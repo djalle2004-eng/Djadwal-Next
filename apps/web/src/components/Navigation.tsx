@@ -96,9 +96,9 @@ const navGroups: NavGroup[] = [
       },
       {
         name: 'الحصص والتكليفات',
-        href: '/sessions',
+        href: '/assignments',
         icon: CalendarClock,
-        description: 'إدارة وتوزيع الحصص والتكليفات البيداغوجية',
+        description: 'إدارة وتوزيع الحصص والتكليفات البيداغوجية والاستيراد الذري',
       },
     ],
   },
