@@ -255,6 +255,48 @@ export const api = {
       `/assignments/coverage-audit?academicYear=${encodeURIComponent(academicYear || '')}&semester=${encodeURIComponent(semester || '')}`
     ),
 
+  // Available Rooms & Extra Sessions Helpers
+  getAvailableRooms: (params: {
+    date?: string;
+    session_date?: string;
+    time_slot?: string;
+    start_time?: string;
+    end_time?: string;
+    academic_year?: string;
+    semester?: string;
+    building?: string;
+    room_type?: string;
+    min_capacity?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params.date) q.set('date', params.date);
+    if (params.session_date) q.set('session_date', params.session_date);
+    if (params.time_slot) q.set('time_slot', params.time_slot);
+    if (params.start_time) q.set('start_time', params.start_time);
+    if (params.end_time) q.set('end_time', params.end_time);
+    if (params.academic_year) q.set('academic_year', params.academic_year);
+    if (params.semester) q.set('semester', params.semester);
+    if (params.building && params.building !== 'all') q.set('building', params.building);
+    if (params.room_type && params.room_type !== 'all') q.set('room_type', params.room_type);
+    if (params.min_capacity) q.set('min_capacity', params.min_capacity.toString());
+    return apiFetch<any>(`/rooms/available?${q.toString()}`);
+  },
+
+  checkExtraSessionConflicts: (data: any) =>
+    apiFetch<any>('/extra-sessions/check-conflicts', { method: 'POST', body: JSON.stringify(data) }),
+
+  createExtraSession: (data: any) =>
+    apiFetch<any>('/extra-sessions', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateExtraSession: (id: number | string, data: any) =>
+    apiFetch<any>(`/extra-sessions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deleteExtraSession: (id: number | string) =>
+    apiFetch<any>(`/extra-sessions/${id}`, { method: 'DELETE' }),
+
+  archivePastExtraSessions: () =>
+    apiFetch<any>('/extra-sessions/archive', { method: 'POST', body: JSON.stringify({}) }),
+
   // Get active database status (P6 Neon / Turso indicator)
   getDatabaseStatus: () =>
     apiFetch<any>('/api/status', { method: 'GET' }).catch(() => ({

@@ -3,11 +3,32 @@ const { unitOfWork } = require('../../../packages/core/src/unitOfWork.js');
 const { executeQuery } = require('../../database.js');
 
 function dateToSystemDayOfWeek(dateStr) {
-  const d = new Date(dateStr);
+  if (!dateStr) return 1;
+  const parts = dateStr.split('-').map(Number);
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
   const jsDay = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   if (jsDay === 0) return 1; // Sunday in Djadwal is 1
   if (jsDay === 6) return 0; // Saturday in Djadwal is 0
   return jsDay + 1; // Mon-Fri (1-5) -> 2-6
+}
+
+const OFFICIAL_SLOTS = [
+  { start: '08:00', end: '09:30', label: '08:00 - 09:30' },
+  { start: '09:30', end: '11:00', label: '09:30 - 11:00' },
+  { start: '11:00', end: '12:30', label: '11:00 - 12:30' },
+  { start: '12:30', end: '14:00', label: '12:30 - 14:00' },
+  { start: '14:00', end: '15:30', label: '14:00 - 15:30' },
+  { start: '15:30', end: '17:00', label: '15:30 - 17:00' },
+];
+
+function timeToMinutes(t) {
+  if (!t) return 0;
+  const parts = t.split(':').map(Number);
+  return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
+
+function isTimeOverlap(s1, e1, s2, e2) {
+  return timeToMinutes(s1) < timeToMinutes(e2) && timeToMinutes(e1) > timeToMinutes(s2);
 }
 
 async function findConflicts({ session_date, start_time, end_time, room_id, professor_id, group_id, academic_year, semester, exclude_id = null }) {
@@ -395,6 +416,201 @@ async function archivePastSessions(req, res) {
   }
 }
 
+async function getAvailableRoomsEndpoint(req, res) {
+  try {
+    const {
+      date,
+      session_date,
+      time_slot,
+      start_time: qStart,
+      end_time: qEnd,
+      academic_year,
+      semester,
+      building,
+      room_type,
+      min_capacity
+    } = req.query;
+
+    const targetDate = date || session_date || new Date().toISOString().split('T')[0];
+    const systemDay = dateToSystemDayOfWeek(targetDate);
+
+    let start_time = qStart;
+    let end_time = qEnd;
+    if (time_slot && !start_time && !end_time) {
+      const parts = time_slot.split('-').map(s => s.trim());
+      if (parts.length === 2) {
+        start_time = parts[0];
+        end_time = parts[1];
+      }
+    }
+    if (!start_time || !end_time) {
+      start_time = OFFICIAL_SLOTS[0].start;
+      end_time = OFFICIAL_SLOTS[0].end;
+    }
+
+    // 1. Fetch active rooms
+    let roomSql = `
+      SELECT id, name, capacity, building, room_type
+      FROM rooms
+      WHERE (is_deleted = 0 OR is_deleted IS NULL)
+    `;
+    const roomParams = [];
+    let rIdx = 1;
+
+    if (building && building !== 'all') {
+      roomSql += ` AND building = $${rIdx++}`;
+      roomParams.push(building);
+    }
+    if (room_type && room_type !== 'all') {
+      roomSql += ` AND room_type = $${rIdx++}`;
+      roomParams.push(room_type);
+    }
+    if (min_capacity && Number(min_capacity) > 0) {
+      roomSql += ` AND capacity >= $${rIdx++}`;
+      roomParams.push(Number(min_capacity));
+    }
+    roomSql += ` ORDER BY name ASC`;
+
+    const rooms = await executeQuery(roomSql, roomParams);
+
+    // 2. Fetch regular assignments for systemDay
+    let regSql = `
+      SELECT a.*, r.name as room_name, p.name as professor_name, g.name as group_name, c.name as course_name
+      FROM assignments a
+      LEFT JOIN rooms r ON a.room_id = r.id
+      LEFT JOIN professors p ON a.professor_id = p.id
+      LEFT JOIN groups g ON a.group_id = g.id
+      LEFT JOIN courses c ON a.course_id = c.id
+      WHERE a.day_of_week = $1
+    `;
+    const regParams = [systemDay];
+    let regIdx = 2;
+    if (academic_year) {
+      regSql += ` AND a.academic_year = $${regIdx++}`;
+      regParams.push(academic_year);
+    }
+    const regularAssignments = await executeQuery(regSql, regParams);
+
+    // 3. Fetch extra sessions for targetDate
+    let extraSql = `
+      SELECT s.*, r.name as room_name, p.name as professor_name, g.name as group_name, c.name as course_name
+      FROM extra_sessions s
+      LEFT JOIN rooms r ON s.room_id = r.id
+      LEFT JOIN professors p ON s.professor_id = p.id
+      LEFT JOIN groups g ON s.group_id = g.id
+      LEFT JOIN courses c ON s.course_id = c.id
+      WHERE s.session_date = $1
+        AND (s.is_archived = 0 OR s.is_archived IS NULL)
+    `;
+    const extraSessions = await executeQuery(extraSql, [targetDate]);
+
+    // 4. Evaluate each room for the target slot and build slot matrix
+    const evaluatedRooms = [];
+    let availableCount = 0;
+    let occupiedCount = 0;
+
+    for (const room of rooms) {
+      const regInTarget = regularAssignments.find(a =>
+        a.room_id === room.id && isTimeOverlap(start_time, end_time, a.start_time, a.end_time)
+      );
+      const extraInTarget = extraSessions.find(s =>
+        s.room_id === room.id && isTimeOverlap(start_time, end_time, s.start_time, s.end_time)
+      );
+
+      const isAvailable = !regInTarget && !extraInTarget;
+      if (isAvailable) {
+        availableCount++;
+      } else {
+        occupiedCount++;
+      }
+
+      let occupant = null;
+      if (regInTarget) {
+        occupant = {
+          type: 'regular',
+          course_name: regInTarget.course_name || 'مقياس رسمي',
+          professor_name: regInTarget.professor_name || 'أستاذ',
+          group_name: regInTarget.group_name || 'فوج',
+          start_time: regInTarget.start_time,
+          end_time: regInTarget.end_time
+        };
+      } else if (extraInTarget) {
+        occupant = {
+          type: 'extra',
+          session_type: extraInTarget.session_type,
+          course_name: extraInTarget.course_name || 'مقياس إضافي',
+          professor_name: extraInTarget.professor_name || 'أستاذ',
+          group_name: extraInTarget.group_name || 'فوج',
+          start_time: extraInTarget.start_time,
+          end_time: extraInTarget.end_time,
+          reason: extraInTarget.reason || ''
+        };
+      }
+
+      // Matrix slots for this room across all 6 official slots
+      const slotsState = {};
+      for (const slot of OFFICIAL_SLOTS) {
+        const slotReg = regularAssignments.find(a =>
+          a.room_id === room.id && isTimeOverlap(slot.start, slot.end, a.start_time, a.end_time)
+        );
+        const slotExtra = extraSessions.find(s =>
+          s.room_id === room.id && isTimeOverlap(slot.start, slot.end, s.start_time, s.end_time)
+        );
+
+        if (slotReg) {
+          slotsState[slot.label] = {
+            status: 'occupied_regular',
+            course_name: slotReg.course_name || '',
+            professor_name: slotReg.professor_name || '',
+            group_name: slotReg.group_name || '',
+            time: `${slotReg.start_time} - ${slotReg.end_time}`
+          };
+        } else if (slotExtra) {
+          slotsState[slot.label] = {
+            status: 'occupied_extra',
+            session_type: slotExtra.session_type,
+            course_name: slotExtra.course_name || '',
+            professor_name: slotExtra.professor_name || '',
+            group_name: slotExtra.group_name || '',
+            time: `${slotExtra.start_time} - ${slotExtra.end_time}`,
+            reason: slotExtra.reason || ''
+          };
+        } else {
+          slotsState[slot.label] = {
+            status: 'available'
+          };
+        }
+      }
+
+      evaluatedRooms.push({
+        room,
+        is_available: isAvailable,
+        occupant,
+        slots: slotsState
+      });
+    }
+
+    const dayNames = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+    const dayNameAr = dayNames[systemDay] || '';
+
+    res.json({
+      target_date: targetDate,
+      system_day: systemDay,
+      day_name_ar: dayNameAr,
+      time_slot: `${start_time} - ${end_time}`,
+      total_rooms: rooms.length,
+      available_count: availableCount,
+      occupied_count: occupiedCount,
+      vacancy_rate: rooms.length > 0 ? Math.round((availableCount / rooms.length) * 100) : 0,
+      rooms: evaluatedRooms,
+      official_slots: OFFICIAL_SLOTS
+    });
+  } catch (err) {
+    console.error('getAvailableRoomsEndpoint error:', err);
+    res.status(500).json({ error: 'FAILED_TO_GET_AVAILABLE_ROOMS', message: err.message });
+  }
+}
+
 module.exports = {
   listExtraSessions,
   getExtraSession,
@@ -402,6 +618,8 @@ module.exports = {
   updateExtraSession,
   deleteExtraSession,
   archivePastSessions,
-  checkConflictsEndpoint
+  checkConflictsEndpoint,
+  getAvailableRoomsEndpoint,
+  OFFICIAL_SLOTS
 };
 

@@ -47,6 +47,7 @@ router.delete('/catalog/departments/:id', deptModule.deleteDepartment);
 router.post('/catalog/departments/:id/archive-cascade', deptModule.archiveCascadeDepartment);
 
 // 4. Catalog - Rooms
+router.get(['/rooms/available', '/catalog/rooms/available'], extraSessionModule.getAvailableRoomsEndpoint);
 router.get(['/catalog/rooms', '/rooms'], roomModule.listRooms);
 router.post(['/catalog/rooms', '/rooms'], validateBody(schemas.createRoomSchema), roomModule.createRoom);
 router.get(['/catalog/rooms/:id', '/rooms/:id'], roomModule.getRoom);
@@ -93,6 +94,7 @@ router.post('/assignments/swap', validateBody(schemas.swapAssignmentSchema), ass
 router.post('/assignments/:id/move', validateBody(schemas.moveAssignmentSchema), assignModule.moveAssignment);
 
 // 8.5 Extra Sessions (Makeup, Extra, Exams)
+router.get('/extra-sessions/available-rooms', extraSessionModule.getAvailableRoomsEndpoint);
 router.get('/extra-sessions', extraSessionModule.listExtraSessions);
 router.post('/extra-sessions', validateBody(schemas.createExtraSessionSchema), extraSessionModule.createExtraSession);
 router.get('/extra-sessions/:id', extraSessionModule.getExtraSession);
