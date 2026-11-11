@@ -48,24 +48,27 @@ router.post('/catalog/departments/:id/archive-cascade', deptModule.archiveCascad
 
 // 4. Catalog - Rooms
 router.get(['/catalog/rooms', '/rooms'], roomModule.listRooms);
-router.post('/catalog/rooms', validateBody(schemas.createRoomSchema), roomModule.createRoom);
+router.post(['/catalog/rooms', '/rooms'], validateBody(schemas.createRoomSchema), roomModule.createRoom);
 router.get(['/catalog/rooms/:id', '/rooms/:id'], roomModule.getRoom);
-router.put('/catalog/rooms/:id', validateBody(schemas.updateRoomSchema), roomModule.updateRoom);
-router.delete('/catalog/rooms/:id', roomModule.deleteRoom);
+router.put(['/catalog/rooms/:id', '/rooms/:id'], validateBody(schemas.updateRoomSchema), roomModule.updateRoom);
+router.delete(['/catalog/rooms/:id', '/rooms/:id'], roomModule.deleteRoom);
+router.post(['/catalog/rooms/:id/restore', '/rooms/:id/restore'], roomModule.restoreRoom);
 
 // 5. Catalog - Courses
 router.get(['/catalog/courses', '/courses'], courseModule.listCourses);
-router.post('/catalog/courses', validateBody(schemas.createCourseSchema), courseModule.createCourse);
+router.post(['/catalog/courses', '/courses'], validateBody(schemas.createCourseSchema), courseModule.createCourse);
 router.get(['/catalog/courses/:id', '/courses/:id'], courseModule.getCourse);
-router.put('/catalog/courses/:id', validateBody(schemas.updateCourseSchema), courseModule.updateCourse);
-router.delete('/catalog/courses/:id', courseModule.deleteCourse);
+router.put(['/catalog/courses/:id', '/courses/:id'], validateBody(schemas.updateCourseSchema), courseModule.updateCourse);
+router.delete(['/catalog/courses/:id', '/courses/:id'], courseModule.deleteCourse);
+router.post(['/catalog/courses/:id/restore', '/courses/:id/restore'], courseModule.restoreCourse);
 
 // 6. Catalog - Groups
 router.get(['/catalog/groups', '/groups'], groupModule.listGroups);
-router.post('/catalog/groups', validateBody(schemas.createGroupSchema), groupModule.createGroup);
+router.post(['/catalog/groups', '/groups'], validateBody(schemas.createGroupSchema), groupModule.createGroup);
 router.get(['/catalog/groups/:id', '/groups/:id'], groupModule.getGroup);
-router.put('/catalog/groups/:id', validateBody(schemas.updateGroupSchema), groupModule.updateGroup);
-router.delete('/catalog/groups/:id', groupModule.deleteGroup);
+router.put(['/catalog/groups/:id', '/groups/:id'], validateBody(schemas.updateGroupSchema), groupModule.updateGroup);
+router.delete(['/catalog/groups/:id', '/groups/:id'], groupModule.deleteGroup);
+router.post(['/catalog/groups/:id/restore', '/groups/:id/restore'], groupModule.restoreGroup);
 
 // 7. Professors
 router.get('/professors', profModule.listProfessors);
@@ -73,6 +76,7 @@ router.post('/professors', validateBody(schemas.createProfessorSchema), profModu
 router.get('/professors/:id', profModule.getProfessor);
 router.put('/professors/:id', validateBody(schemas.updateProfessorSchema), profModule.updateProfessor);
 router.delete('/professors/:id', profModule.deleteProfessor);
+router.post('/professors/:id/restore', profModule.restoreProfessor);
 router.post('/professors/bulk-import', validateBody(schemas.bulkImportProfessorsSchema), profModule.bulkImportProfessors);
 
 // 8. Assignments

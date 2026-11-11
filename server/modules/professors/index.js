@@ -66,6 +66,16 @@ async function deleteProfessor(req, res) {
   }
 }
 
+async function restoreProfessor(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await professorsRepository.restore(id, { userId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 async function bulkImportProfessors(req, res) {
   try {
     const { professors: profList } = req.body;
@@ -106,6 +116,7 @@ module.exports = {
   createProfessor,
   updateProfessor,
   deleteProfessor,
+  restoreProfessor,
   bulkImportProfessors
 };
 

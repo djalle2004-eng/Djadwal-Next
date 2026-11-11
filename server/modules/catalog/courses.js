@@ -67,11 +67,22 @@ async function deleteCourse(req, res) {
   }
 }
 
+async function restoreCourse(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await coursesRepository.restore(id, { userId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   listCourses,
   getCourse,
   createCourse,
   updateCourse,
-  deleteCourse
+  deleteCourse,
+  restoreCourse
 };
 

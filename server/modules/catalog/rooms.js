@@ -65,11 +65,22 @@ async function deleteRoom(req, res) {
   }
 }
 
+async function restoreRoom(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await roomsRepository.restore(id, { userId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   listRooms,
   getRoom,
   createRoom,
   updateRoom,
-  deleteRoom
+  deleteRoom,
+  restoreRoom
 };
 

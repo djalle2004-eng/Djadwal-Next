@@ -65,11 +65,22 @@ async function deleteGroup(req, res) {
   }
 }
 
+async function restoreGroup(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await groupsRepository.restore(id, { userId: req.user?.id });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   listGroups,
   getGroup,
   createGroup,
   updateGroup,
-  deleteGroup
+  deleteGroup,
+  restoreGroup
 };
 

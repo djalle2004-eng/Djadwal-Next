@@ -202,23 +202,43 @@ export const api = {
     apiFetch<T>(endpoint, { ...options, method: 'DELETE' }),
 
   // P7 Specific: Query Delete Impact before executing destructive/soft delete
-  getDeleteImpact: (entityType: string, id: number | string) =>
-    apiFetch<{
-      impact: {
-        entity_type: string;
-        entity_id: number;
-        affected_assignments_count: number;
-        affected_extra_sessions_count: number;
-        affected_groups_count?: number;
-        affected_courses_count?: number;
-        warning_ar: string;
-        can_soft_delete: boolean;
-      };
-    }>(`/${entityType}/${id}/delete-impact`),
+  getDeleteImpact: async (entityType: string, id: number | string) => {
+    const data = await apiFetch<any>(`/${entityType}/${id}/delete-impact`);
+    const impacts = data?.impacts || [];
+    const totalImpactCount = data?.totalImpactCount !== undefined
+      ? data.totalImpactCount
+      : (
+          (data?.impact?.affected_assignments_count || 0) +
+          (data?.impact?.affected_extra_sessions_count || 0) +
+          (data?.impact?.affected_groups_count || 0) +
+          (data?.impact?.affected_courses_count || 0)
+        );
+    return {
+      entity: data?.entity || entityType,
+      id: data?.id || id,
+      name: data?.name || '',
+      canDelete: data?.canDelete !== undefined ? data.canDelete : true,
+      blockReason: data?.blockReason || '',
+      impacts,
+      totalImpactCount,
+      impact: data?.impact || {
+        affected_assignments_count: impacts.find((i: any) => i.entityType === 'assignments')?.count || 0,
+        affected_extra_sessions_count: impacts.find((i: any) => i.entityType === 'extra_sessions')?.count || 0,
+        affected_groups_count: impacts.find((i: any) => i.entityType === 'groups')?.count || 0,
+        affected_courses_count: impacts.find((i: any) => i.entityType === 'courses')?.count || 0,
+        warning_ar: data?.blockReason || '',
+        can_soft_delete: data?.canDelete !== undefined ? data.canDelete : true,
+      },
+    };
+  },
 
   // P7 Specific: Undo a previous action from change_log
   undoChange: (changeLogId: number | string) =>
     apiFetch(`/changes/${changeLogId}/undo`, { method: 'POST' }),
+
+  // P7 Specific: Restore an archived/soft-deleted entity
+  restore: (entityType: string, id: number | string) =>
+    apiFetch(`/${entityType}/${id}/restore`, { method: 'POST' }),
 
   // Get active database status (P6 Neon / Turso indicator)
   getDatabaseStatus: () =>
