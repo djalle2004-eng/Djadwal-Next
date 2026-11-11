@@ -39,26 +39,7 @@ import {
   DialogDescription,
 } from '@djadwal/ui';
 import { api } from '@/lib/api';
-
-// Days of the week (Saturday to Thursday)
-const DAYS = [
-  { id: 0, name: 'السبت' },
-  { id: 1, name: 'الأحد' },
-  { id: 2, name: 'الاثنين' },
-  { id: 3, name: 'الثلاثاء' },
-  { id: 4, name: 'الأربعاء' },
-  { id: 5, name: 'الخميس' },
-];
-
-// 6 standard educational slots
-const TIME_SLOTS = [
-  { id: 0, start: '08:00', end: '09:30', label: '08:00 - 09:30' },
-  { id: 1, start: '09:35', end: '11:05', label: '09:35 - 11:05' },
-  { id: 2, start: '11:10', end: '12:40', label: '11:10 - 12:40' },
-  { id: 3, start: '13:00', end: '14:30', label: '13:00 - 14:30' },
-  { id: 4, start: '14:35', end: '16:05', label: '14:35 - 16:05' },
-  { id: 5, start: '16:10', end: '17:40', label: '16:10 - 17:40' },
-];
+import { TIME_SLOTS, DAYS, normalizeDay, matchesSlot } from '@/constants/timeSlots';
 
 interface Assignment {
   id: number;
@@ -88,31 +69,6 @@ interface Group {
   department_id?: number;
   department_name?: string;
   group_type?: string;
-}
-
-// Convert day representation to integer 0..6
-function normalizeDay(day: number | string): number {
-  if (typeof day === 'number') return day;
-  if (!day) return -1;
-  const map: Record<string, number> = {
-    'السبت': 0, 'الأحد': 1, 'الاثنين': 2, 'الإثنين': 2, 'الثلاثاء': 3, 'الأربعاء': 4, 'الخميس': 5, 'الجمعة': 6
-  };
-  if (day in map) return map[day];
-  const parsed = parseInt(day, 10);
-  return isNaN(parsed) ? -1 : parsed;
-}
-
-// Check if session start time matches slot
-function matchesSlot(sessionStart: string, slotStart: string, slotEnd: string): boolean {
-  if (!sessionStart) return false;
-  const toMin = (t: string) => {
-    const parts = t.split(':');
-    return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
-  };
-  const sStart = toMin(sessionStart);
-  const slStart = toMin(slotStart);
-  const slEnd = toMin(slotEnd);
-  return Math.abs(sStart - slStart) <= 15 || (sStart >= slStart && sStart < slEnd);
 }
 
 export default function GroupSchedulesPage() {
@@ -259,7 +215,7 @@ export default function GroupSchedulesPage() {
     return assignments.filter((a) => {
       const dayNum = normalizeDay(a.day_of_week);
       if (dayNum !== dayId) return false;
-      if (!matchesSlot(a.start_time, slot.start, slot.end)) return false;
+      if (!matchesSlot(a.start_time, slot.start, slot.end, a.end_time)) return false;
 
       // 1. Direct group session (TD / TP)
       if (a.group_id === groupId) return true;
@@ -565,9 +521,12 @@ export default function GroupSchedulesPage() {
                     اليوم / التوقيت
                   </th>
                   {TIME_SLOTS.map((slot) => (
-                    <th key={slot.id} className="py-3.5 px-3 border-l border-slate-200 text-center font-bold">
+                    <th key={slot.id} className="py-3 px-3 border-l border-slate-200 text-center font-bold">
                       <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-slate-800">{slot.label}</span>
+                        <span className="text-slate-800 font-bold text-xs">{slot.label}</span>
+                        <span className="text-[10px] text-blue-800 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/50">
+                          {slot.periodName}
+                        </span>
                       </div>
                     </th>
                   ))}
@@ -707,8 +666,9 @@ export default function GroupSchedulesPage() {
                         <tr className="bg-slate-100/50 border-b border-slate-200 text-slate-600 text-[11px]">
                           <th className="py-2 px-3 border-l border-slate-200 w-24 text-center font-bold">اليوم</th>
                           {TIME_SLOTS.map((s) => (
-                            <th key={s.id} className="py-2 px-2 border-l border-slate-200 text-center font-semibold">
-                              {s.start} - {s.end}
+                            <th key={s.id} className="py-2 px-1 border-l border-slate-200 text-center font-semibold">
+                              <div className="text-xs font-bold text-slate-800">{s.label}</div>
+                              <div className="text-[9px] text-slate-500 font-normal">{s.periodName}</div>
                             </th>
                           ))}
                         </tr>
@@ -928,8 +888,9 @@ export default function GroupSchedulesPage() {
                           اليوم / التوقيت
                         </th>
                         {TIME_SLOTS.map((s) => (
-                          <th key={s.id} className="py-2 px-2 border border-slate-700 font-bold text-slate-900 text-xs">
-                            {s.start} - {s.end}
+                          <th key={s.id} className="py-2 px-1 border border-slate-700 font-bold text-slate-900 text-xs">
+                            <div className="font-extrabold">{s.label}</div>
+                            <div className="text-[9px] text-slate-600 font-normal">{s.periodName}</div>
                           </th>
                         ))}
                       </tr>

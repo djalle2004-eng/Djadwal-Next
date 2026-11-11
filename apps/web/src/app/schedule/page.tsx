@@ -35,26 +35,7 @@ import {
   DialogDescription,
 } from '@djadwal/ui';
 import { api } from '@/lib/api';
-
-// Days of the week (Saturday to Thursday)
-const DAYS = [
-  { id: 0, name: 'السبت' },
-  { id: 1, name: 'الأحد' },
-  { id: 2, name: 'الاثنين' },
-  { id: 3, name: 'الثلاثاء' },
-  { id: 4, name: 'الأربعاء' },
-  { id: 5, name: 'الخميس' },
-];
-
-// 6 standard educational slots
-const TIME_SLOTS = [
-  { id: 0, start: '08:00', end: '09:30', label: '08:00 - 09:30' },
-  { id: 1, start: '09:35', end: '11:05', label: '09:35 - 11:05' },
-  { id: 2, start: '11:10', end: '12:40', label: '11:10 - 12:40' },
-  { id: 3, start: '13:00', end: '14:30', label: '13:00 - 14:30' },
-  { id: 4, start: '14:35', end: '16:05', label: '14:35 - 16:05' },
-  { id: 5, start: '16:10', end: '17:40', label: '16:10 - 17:40' },
-];
+import { TIME_SLOTS, DAYS, normalizeDay, matchesSlot } from '@/constants/timeSlots';
 
 interface Assignment {
   id: number;
@@ -76,31 +57,6 @@ interface Assignment {
   version?: number;
 }
 
-// Convert day representation to integer 0..6
-function normalizeDay(day: number | string): number {
-  if (typeof day === 'number') return day;
-  if (!day) return -1;
-  const map: Record<string, number> = {
-    'السبت': 0, 'الأحد': 1, 'الاثنين': 2, 'الإثنين': 2, 'الثلاثاء': 3, 'الأربعاء': 4, 'الخميس': 5, 'الجمعة': 6
-  };
-  if (day in map) return map[day];
-  const parsed = parseInt(day, 10);
-  return isNaN(parsed) ? -1 : parsed;
-}
-
-// Check if session start time matches slot
-function matchesSlot(sessionStart: string, slotStart: string, slotEnd: string): boolean {
-  if (!sessionStart) return false;
-  const toMin = (t: string) => {
-    const parts = t.split(':');
-    return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
-  };
-  const sStart = toMin(sessionStart);
-  const slStart = toMin(slotStart);
-  const slEnd = toMin(slotEnd);
-  return Math.abs(sStart - slStart) <= 15 || (sStart >= slStart && sStart < slEnd);
-}
-
 export default function SchedulePage() {
   const [academicYear, setAcademicYear] = useState('2026-2027');
   const [semester, setSemester] = useState('السداسي الأول');
@@ -117,6 +73,7 @@ export default function SchedulePage() {
   const [selectedSpecialization, setSelectedSpecialization] = useState<string>('all');
   const [selectedYearLevel, setSelectedYearLevel] = useState<string>('all');
   const [selectedDayId, setSelectedDayId] = useState<string>('all');
+  const [sessionTypeFilter, setSessionTypeFilter] = useState<'all' | 'cours' | 'td' | 'tp'>('all');
 
   // Details Modal
   const [activeSession, setActiveSession] = useState<Assignment | null>(null);
@@ -300,18 +257,29 @@ export default function SchedulePage() {
 
       // 5. Comprehensive (All)
       if (selectedSpecialization !== 'all') {
-        return matchesSpecialization(a, selectedSpecialization);
+        if (!matchesSpecialization(a, selectedSpecialization)) return false;
       }
+
+      // Session Type Filter (محاضرة / TD / TP)
+      if (sessionTypeFilter !== 'all') {
+        const isLecture = isLectureSession(a);
+        const isTD = !isLecture && (a.session_type === 'td' || (a.group_name && a.group_name.toLowerCase().includes('td')));
+        const isTP = !isLecture && !isTD && (a.session_type === 'tp' || (a.group_name && a.group_name.toLowerCase().includes('tp')));
+        if (sessionTypeFilter === 'cours' && !isLecture) return false;
+        if (sessionTypeFilter === 'td' && !isTD) return false;
+        if (sessionTypeFilter === 'tp' && !isTP) return false;
+      }
+
       return true;
     });
-  }, [assignments, filterType, selectedEntityId, selectedDayId, selectedSpecialization, selectedYearLevel, groups]);
+  }, [assignments, filterType, selectedEntityId, selectedDayId, selectedSpecialization, selectedYearLevel, sessionTypeFilter, groups]);
 
   // Find assignments for a specific day and time slot
   const getCellAssignments = (dayId: number, slot: typeof TIME_SLOTS[0]) => {
     return filteredAssignments.filter((a) => {
       const dayNum = normalizeDay(a.day_of_week);
       if (dayNum !== dayId) return false;
-      return matchesSlot(a.start_time, slot.start, slot.end);
+      return matchesSlot(a.start_time, slot.start, slot.end, a.end_time);
     });
   };
 
@@ -658,62 +626,72 @@ export default function SchedulePage() {
             </div>
           </div>
 
-          {/* Secondary Filter Row (for Specialization & Level & Day) */}
-          {(filterType === 'group' || filterType === 'specialization') && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100">
-              {filterType === 'group' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية حسب التخصص</label>
-                  <select
-                    value={selectedSpecialization}
-                    onChange={(e) => setSelectedSpecialization(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700"
-                  >
-                    <option value="all">كافة التخصصات ({specializations.length})</option>
-                    {specializations.map((spec) => (
-                      <option key={spec} value={spec}>
-                        {spec}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          {/* Secondary Filter Row (for Specialization & Level & Session Type & Day) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-3 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">المستوى الدراسي</label>
+              <select
+                value={selectedYearLevel}
+                onChange={(e) => setSelectedYearLevel(e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 font-medium"
+              >
+                <option value="all">كافة المستويات ({yearLevels.length})</option>
+                {yearLevels.map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
+            </div>
 
+            {filterType === 'group' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">المستوى الدراسي</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية حسب التخصص</label>
                 <select
-                  value={selectedYearLevel}
-                  onChange={(e) => setSelectedYearLevel(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700"
+                  value={selectedSpecialization}
+                  onChange={(e) => setSelectedSpecialization(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 font-medium"
                 >
-                  <option value="all">كافة المستويات ({yearLevels.length})</option>
-                  {yearLevels.map((lvl) => (
-                    <option key={lvl} value={lvl}>
-                      {lvl}
+                  <option value="all">كافة التخصصات ({specializations.length})</option>
+                  {specializations.map((spec) => (
+                    <option key={spec} value={spec}>
+                      {spec}
                     </option>
                   ))}
                 </select>
               </div>
+            )}
 
-              {filterType === 'specialization' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية اليوم</label>
-                  <select
-                    value={selectedDayId}
-                    onChange={(e) => setSelectedDayId(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700"
-                  >
-                    <option value="all">كافة أيام الأسبوع (السبت - الخميس)</option>
-                    {DAYS.map((d) => (
-                      <option key={d.id} value={String(d.id)}>
-                        يوم {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">نوع الحصة</label>
+              <select
+                value={sessionTypeFilter}
+                onChange={(e) => setSessionTypeFilter(e.target.value as any)}
+                className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 font-medium"
+              >
+                <option value="all">كافة أنواع الحصص (محاضرات + TD + TP)</option>
+                <option value="cours">المحاضرات فقط (Cours)</option>
+                <option value="td">الأعمال الموجهة فقط (TD)</option>
+                <option value="tp">الأعمال التطبيقية فقط (TP)</option>
+              </select>
             </div>
-          )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">تصفية اليوم</label>
+              <select
+                value={selectedDayId}
+                onChange={(e) => setSelectedDayId(e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 font-medium"
+              >
+                <option value="all">كافة أيام الأسبوع (السبت - الخميس)</option>
+                {DAYS.map((d) => (
+                  <option key={d.id} value={String(d.id)}>
+                    يوم {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           {/* Context Info & Quick Legend */}
           <div className="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-600 gap-3">
@@ -778,9 +756,12 @@ export default function SchedulePage() {
                   اليوم / التوقيت
                 </th>
                 {TIME_SLOTS.map((slot) => (
-                  <th key={slot.id} className="py-4 px-3 font-bold border-l border-slate-200 text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-slate-800">{slot.label}</span>
+                  <th key={slot.id} className="py-3 px-3 font-bold border-l border-slate-200 text-center">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="text-slate-800 font-bold text-xs">{slot.label}</span>
+                      <span className="text-[10px] text-blue-800 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/50">
+                        {slot.periodName}
+                      </span>
                     </div>
                   </th>
                 ))}
@@ -999,8 +980,9 @@ export default function SchedulePage() {
                       اليوم / التوقيت
                     </th>
                     {TIME_SLOTS.map((s) => (
-                      <th key={s.id} className="py-2 px-2 border border-slate-700 font-bold text-slate-900 text-xs">
-                        {s.start} - {s.end}
+                      <th key={s.id} className="py-2 px-1 border border-slate-700 font-bold text-slate-900 text-xs">
+                        <div className="font-extrabold">{s.label}</div>
+                        <div className="text-[9px] text-slate-600 font-normal">{s.periodName}</div>
                       </th>
                     ))}
                   </tr>

@@ -13,16 +13,9 @@ import {
   Sliders,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { TIME_SLOTS, matchesSlot } from '@/constants/timeSlots';
 
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
-const TIME_SLOTS = [
-  { start: '08:00', end: '09:30', label: '08:00 - 09:30' },
-  { start: '09:35', end: '11:05', label: '09:35 - 11:05' },
-  { start: '11:10', end: '12:40', label: '11:10 - 12:40' },
-  { start: '13:00', end: '14:30', label: '13:00 - 14:30' },
-  { start: '14:35', end: '16:05', label: '14:35 - 16:05' },
-  { start: '16:10', end: '17:40', label: '16:10 - 17:40' },
-];
 
 export default function PrintPage() {
   const [academicYear, setAcademicYear] = useState('2026-2027');
@@ -81,9 +74,9 @@ export default function PrintPage() {
     });
   }, [assignments, selectedId, printType]);
 
-  const getCellSession = (day: string, slotStart: string) => {
+  const getCellSession = (day: string, slotStart: string, slotEnd: string) => {
     return timetableSessions.find(
-      (a) => a.day_of_week === day && (a.start_time || '').startsWith(slotStart.slice(0, 5))
+      (a) => a.day_of_week === day && matchesSlot(a.start_time, slotStart, slotEnd, a.end_time)
     );
   };
 
@@ -243,7 +236,7 @@ export default function PrintPage() {
                     {day}
                   </td>
                   {TIME_SLOTS.map((slot) => {
-                    const session = getCellSession(day, slot.start);
+                    const session = getCellSession(day, slot.start, slot.end);
                     return (
                       <td
                         key={slot.start}
