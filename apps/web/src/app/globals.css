@@ -20,19 +20,71 @@ body {
 
 /* Print Specific Rules */
 @media print {
-  body {
+  @page {
+    size: A4 landscape;
+    margin: 6mm 8mm;
+  }
+
+  html, body {
     background: white !important;
     color: black !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  .no-print {
+
+  /* Suppress browser chrome, navigation, headers, and modal actions */
+  nav, header, aside, footer, .no-print, [role="dialog"] button, button {
     display: none !important;
   }
+
   .print-only {
     display: block !important;
   }
-  @page {
-    size: A4 landscape;
-    margin: 10mm;
+
+  /* Completely neutralize Dialog wrappers so they print as normal document flow */
+  [role="dialog"],
+  [role="dialog"] > div {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  /* Printable Schedule Sheet & Tables */
+  .printable-schedule-sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-inside: avoid !important;
+  }
+
+  .printable-schedule-sheet table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  .printable-schedule-sheet th,
+  .printable-schedule-sheet td {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 }
 

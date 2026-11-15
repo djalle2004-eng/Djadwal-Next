@@ -80,6 +80,7 @@ export default function SchedulePage() {
 
   // Print Modal
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [printSettings, setPrintSettings] = useState<any>(null);
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,9 +93,10 @@ export default function SchedulePage() {
         api.get('/groups?limit=500'),
         api.get('/professors?limit=500'),
         api.get('/rooms?limit=500'),
+        api.getPrintSettings().catch(() => null),
       ]);
 
-      const [assignRes, groupsRes, profsRes, roomsRes] = results;
+      const [assignRes, groupsRes, profsRes, roomsRes, printRes] = results;
 
       if (assignRes.status === 'fulfilled' && Array.isArray(assignRes.value)) {
         setAssignments(assignRes.value);
@@ -107,6 +109,9 @@ export default function SchedulePage() {
       }
       if (roomsRes.status === 'fulfilled' && Array.isArray(roomsRes.value)) {
         setRooms(roomsRes.value);
+      }
+      if (printRes && printRes.status === 'fulfilled' && printRes.value) {
+        setPrintSettings(printRes.value);
       }
 
       // Check if critical calls failed
@@ -921,8 +926,9 @@ export default function SchedulePage() {
 
       {/* 5. Official College A4 Landscape Print Engine Dialog */}
       <Dialog open={isPrintDialogOpen} onClose={() => setIsPrintDialogOpen(false)} size="full">
-        <div className="p-6 space-y-6 max-w-5xl w-full bg-white rounded-2xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between border-b pb-4">
+        <div className="p-4 sm:p-6 space-y-4 max-w-[96vw] w-full bg-white rounded-2xl max-h-[95vh] overflow-y-auto print:p-0 print:m-0 print:border-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible print:max-w-none print:w-full">
+          {/* Dialog Action Header - Suppressed in Print */}
+          <div className="no-print flex items-center justify-between border-b pb-4">
             <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Printer className="w-5 h-5 text-blue-600" />
               <span>معاينة الطباعة الرسمية للكلية (A4 أفقي - Landscape)</span>
@@ -947,42 +953,99 @@ export default function SchedulePage() {
           </div>
 
           {/* Printable Sheet */}
-          <div className="p-6 border border-slate-300 rounded-xl bg-white text-slate-900 print-content">
-            {/* Algerian Official Header */}
-            <div className="text-center border-b pb-3 mb-4">
-              <h2 className="font-bold text-sm tracking-wide">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
-              <h3 className="font-bold text-xs mt-0.5">وزارة التعليم العالي والبحث العلمي</h3>
-              <h4 className="font-semibold text-xs mt-0.5">جامعة الشهيد حمه لخضر - الوادي</h4>
-              <h5 className="text-xs text-slate-700 mt-0.5 font-medium">كلية العلوم الاقتصادية والتجارية وعلوم التسيير</h5>
-              <div className="text-[11px] text-slate-600 mt-1 font-mono">
-                السنة الجامعية: {academicYear} | {semester}
+          <div className="printable-schedule-sheet relative p-4 sm:p-6 border border-slate-300 print:border-none rounded-xl print:rounded-none bg-white text-slate-900 print-content overflow-hidden">
+            {/* Watermark */}
+            {printSettings?.enable_watermark && (printSettings.faculty_logo || printSettings.university_logo) && (
+              <div
+                className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0 select-none"
+                style={{ opacity: Number(printSettings.watermark_opacity ?? 8) / 100 }}
+              >
+                <img
+                  src={printSettings.faculty_logo || printSettings.university_logo}
+                  alt=""
+                  className="w-80 h-80 object-contain grayscale"
+                />
+              </div>
+            )}
+
+            {/* Algerian Official Triple Header */}
+            <div className="relative z-10 flex items-center justify-between border-b-2 border-slate-900 pb-3 mb-3">
+              {/* University Logo (Right in RTL) */}
+              <div className="w-20 h-20 flex items-center justify-center shrink-0">
+                {printSettings?.university_logo ? (
+                  <img
+                    src={printSettings.university_logo}
+                    alt="شعار الجامعة"
+                    className="max-h-20 max-w-20 object-contain"
+                  />
+                ) : (
+                  <div className="w-16 h-16 border border-dashed border-slate-300 rounded-full flex items-center justify-center text-[10px] text-slate-400">
+                    شعار الجامعة
+                  </div>
+                )}
+              </div>
+
+              {/* Official Text (Center) */}
+              <div className="text-center flex-1 px-3">
+                <h2 className="font-bold text-xs tracking-wider text-slate-900">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
+                <h3 className="font-bold text-xs mt-0.5 text-slate-800">وزارة التعليم العالي والبحث العلمي</h3>
+                <h4 className="font-extrabold text-sm mt-0.5 text-blue-950">
+                  {printSettings?.institution_name || 'جامعة الشهيد حمه لخضر - الوادي'}
+                </h4>
+                <h5 className="text-xs text-slate-800 mt-0.5 font-bold">
+                  {printSettings?.faculty_name || 'كلية العلوم الاقتصادية والتجارية وعلوم التسيير'}
+                </h5>
+                <div className="text-[11px] text-slate-700 mt-1 font-semibold">
+                  السنة الجامعية: {academicYear} | {semester}
+                </div>
+              </div>
+
+              {/* Faculty Logo (Left in RTL) */}
+              <div className="w-20 h-20 flex items-center justify-center shrink-0">
+                {printSettings?.faculty_logo ? (
+                  <img
+                    src={printSettings.faculty_logo}
+                    alt="شعار الكلية"
+                    className="max-h-20 max-w-20 object-contain"
+                  />
+                ) : (
+                  <div className="w-16 h-16 border border-dashed border-slate-300 rounded-full flex items-center justify-center text-[10px] text-slate-400">
+                    شعار الكلية
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Title & Scope */}
-            <div className="text-center my-3">
-              <h3 className="text-base font-extrabold text-blue-950 inline-block border-b-2 border-blue-900 pb-0.5">
-                {filterType === 'specialization'
-                  ? `جدول استعمال الزمن الخاص بـ: تخصص ${selectedSpecialization} (المحاضرات والأفواج)`
-                  : 'جدول التوقيت الأسبوعي العام'}
-              </h3>
-              <div className="mt-1.5 text-xs text-slate-800 font-bold">
-                {currentEntityName}
+            {/* Scope Title (Single Clean Framed Title, NO DUPLICATION) */}
+            <div className="relative z-10 text-center my-2">
+              <div className="inline-block bg-slate-100 border-2 border-slate-900 px-5 py-1 rounded-lg">
+                <span className="text-xs sm:text-sm font-extrabold text-slate-900">
+                  {currentEntityName}
+                </span>
               </div>
             </div>
 
-            {/* Printable Table */}
-            <div className="mt-4">
-              <table className="w-full border-collapse text-center text-xs" style={{ border: '2px solid #333' }}>
+            {/* Fixed-Width Printable Table (10% + 6 x 15% = 100%) */}
+            <div className="relative z-10 mt-3 overflow-x-hidden">
+              <table className="w-full table-fixed border-collapse text-center" style={{ border: '2px solid #000' }}>
+                <colgroup>
+                  <col className="w-[10%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                </colgroup>
                 <thead>
-                  <tr className="bg-slate-200">
-                    <th className="py-2.5 px-3 border border-slate-700 w-24 font-bold text-slate-900">
+                  <tr className="bg-slate-200 text-slate-900 border-b-2 border-slate-900">
+                    <th className="py-2 px-1 border border-slate-700 font-extrabold text-[10.5px]">
                       اليوم / التوقيت
                     </th>
                     {TIME_SLOTS.map((s) => (
-                      <th key={s.id} className="py-2 px-1 border border-slate-700 font-bold text-slate-900 text-xs">
-                        <div className="font-extrabold">{s.label}</div>
-                        <div className="text-[9px] text-slate-600 font-normal">{s.periodName}</div>
+                      <th key={s.id} className="py-1 px-0.5 border border-slate-700 font-extrabold text-[9.5px] leading-tight">
+                        <div>{s.label}</div>
+                        <div className="text-[8.5px] font-normal text-slate-700">{s.periodName}</div>
                       </th>
                     ))}
                   </tr>
@@ -993,37 +1056,42 @@ export default function SchedulePage() {
 
                     return (
                       <tr key={day.id} className="border border-slate-700">
-                        <td className="py-3 px-3 font-bold border border-slate-700 bg-slate-100 text-slate-900">
+                        <td className="py-2 px-1 font-bold border border-slate-700 bg-slate-100 text-slate-900 text-[10px]">
                           {day.name}
                         </td>
                         {TIME_SLOTS.map((slot) => {
                           const cellSessions = getCellAssignments(day.id, slot);
+
                           return (
-                            <td key={slot.id} className="p-1.5 border border-slate-700 h-[72px] align-top text-right">
+                            <td
+                              key={slot.id}
+                              className="p-1 border border-slate-700 align-top h-14 overflow-hidden"
+                            >
                               {cellSessions.length === 0 ? (
-                                <span className="text-slate-400 font-light block text-center mt-4">—</span>
+                                <span className="text-[9px] text-slate-300 font-mono">-</span>
                               ) : (
                                 cellSessions.map((s, idx) => {
                                   const isLecture = isLectureSession(s);
                                   return (
                                     <div
-                                      key={s.id}
-                                      className={`text-[10px] leading-tight pb-1 mb-1 ${
-                                        idx < cellSessions.length - 1 ? 'border-b border-dashed border-slate-400' : ''
+                                      key={`${s.id}-${idx}`}
+                                      className={`p-1 rounded text-start leading-tight border ${
+                                        idx > 0 ? 'mt-1 pt-1 border-t border-slate-300' : ''
+                                      } ${
+                                        isLecture
+                                          ? 'bg-amber-50/70 border-amber-300'
+                                          : 'bg-blue-50/70 border-blue-300'
                                       }`}
                                     >
-                                      <div className="font-extrabold text-slate-900 flex items-center justify-between">
-                                        <span className="truncate">{s.course_name}</span>
-                                        <span
-                                          className={`font-bold text-[9px] px-1 rounded ${
-                                            isLecture ? 'bg-blue-100 text-blue-900' : 'bg-slate-200 text-slate-800'
-                                          }`}
-                                        >
-                                          {isLecture ? 'محاضرة' : s.group_name}
-                                        </span>
+                                      <div className="font-extrabold text-[9px] truncate text-slate-950">
+                                        {s.course_name}
                                       </div>
-                                      <div className="text-[9px] text-slate-700 font-medium">
-                                        {s.professor_name} | {s.room_name || 'قاعة'}
+                                      <div className="flex items-center justify-between text-[8px] font-semibold mt-0.5 text-slate-700">
+                                        <span className="truncate">{s.professor_name}</span>
+                                        <span className="font-bold shrink-0">{s.room_name || 'قاعة'}</span>
+                                      </div>
+                                      <div className="text-[8px] font-bold text-blue-800 mt-0.5">
+                                        {isLecture ? 'محاضرة' : s.group_name}
                                       </div>
                                     </div>
                                   );
@@ -1040,14 +1108,14 @@ export default function SchedulePage() {
             </div>
 
             {/* Official Signatures Block */}
-            <div className="grid grid-cols-2 gap-8 pt-8 mt-4 text-center text-xs font-bold text-slate-800">
+            <div className="relative z-10 grid grid-cols-2 gap-8 pt-4 mt-2 text-center text-xs font-bold text-slate-900">
               <div>
-                <span>تأشيرة رئيس القسم</span>
-                <div className="h-16 mt-2 border-b border-dashed border-slate-400"></div>
+                <span>{printSettings?.department_head_title || 'تأشيرة رئيس القسم'}</span>
+                <div className="h-12 mt-1 border-b border-dashed border-slate-400"></div>
               </div>
               <div>
-                <span>مصادقة عميد الكلية</span>
-                <div className="h-16 mt-2 border-b border-dashed border-slate-400"></div>
+                <span>{printSettings?.vice_dean_title || 'مصادقة عميد الكلية'}</span>
+                <div className="h-12 mt-1 border-b border-dashed border-slate-400"></div>
               </div>
             </div>
           </div>

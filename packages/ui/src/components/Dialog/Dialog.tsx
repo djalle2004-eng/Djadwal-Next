@@ -37,18 +37,18 @@ export function Dialog({ open, onClose, children, className, size = 'md' }: Dial
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:static print:p-0 print:m-0 print:bg-transparent print:backdrop-filter-none print:overflow-visible print:z-auto print:block print:inset-auto"
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="fixed inset-0"
+        className="fixed inset-0 no-print print:hidden"
         aria-hidden="true"
         onClick={onClose}
       />
       <div
         className={cn(
-          'relative w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 z-10 text-start',
+          'relative w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 z-10 text-start print:p-0 print:m-0 print:border-none print:shadow-none print:rounded-none print:bg-white print:max-w-none print:w-full print:static print:overflow-visible',
           sizeStyles[size],
           className
         )}
@@ -56,7 +56,7 @@ export function Dialog({ open, onClose, children, className, size = 'md' }: Dial
         <button
           type="button"
           onClick={onClose}
-          className="absolute end-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="absolute end-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors no-print print:hidden"
           aria-label="إغلاق النافذة"
         >
           <X className="w-5 h-5" />
