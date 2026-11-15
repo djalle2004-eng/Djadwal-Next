@@ -19,6 +19,8 @@ const userModule = require('./modules/users/index.js');
 const auditModule = require('./modules/audit/index.js');
 const compatModule = require('./modules/compat/index.js');
 const authModule = require('./modules/auth/index.js');
+const backupModule = require('./modules/backup/index.js');
+const settingsModule = require('./modules/settings/index.js');
 
 // 1. Core V1 Middlewares
 router.use(traceMiddleware);
@@ -121,6 +123,23 @@ router.delete('/academic/semesters/:id', acadModule.deleteSemester);
 router.get('/changes', auditModule.listChanges);
 router.post('/changes/:id/undo', auditModule.undoChange);
 router.get('/:entity/:id/delete-impact', auditModule.getDeleteImpact);
+
+// 10.5 Users & RBAC
+router.get('/users', userModule.listUsers);
+router.post('/users', userModule.createUser);
+router.get('/users/:id', userModule.getUser);
+router.put('/users/:id', userModule.updateUser);
+router.delete('/users/:id', userModule.deleteUser);
+router.get('/users/:id/permissions', userModule.getUserPermissions);
+router.put('/users/:id/permissions', userModule.updateUserPermissions);
+
+// 10.6 Print Settings & Official Identity
+router.get('/settings/print', settingsModule.getPrintSettings);
+router.put('/settings/print', settingsModule.updatePrintSettings);
+router.post('/settings/print', settingsModule.updatePrintSettings);
+
+// 10.7 System Backup & Full Snapshot
+router.get(['/system/backup/snapshot', '/backup/snapshot'], backupModule.exportBackupSnapshot);
 
 // 11. Central V1 Error Handler
 router.use((err, req, res, next) => {

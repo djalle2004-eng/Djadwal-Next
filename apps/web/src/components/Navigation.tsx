@@ -25,7 +25,11 @@ import {
   Menu,
   SlidersHorizontal,
   ExternalLink,
-  ChevronLeft
+  ChevronLeft,
+  Settings,
+  History,
+  Shield,
+  Building2
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Drawer } from '@djadwal/ui';
@@ -136,6 +140,37 @@ const navGroups: NavGroup[] = [
         href: '/print',
         icon: Printer,
         description: 'طباعة الجداول والاستعمالات بصيغة A4 رسمية',
+      },
+    ],
+  },
+  {
+    id: 'settings',
+    title: 'الإعدادات والنظام',
+    icon: Settings,
+    items: [
+      {
+        name: 'السنوات والأقسام',
+        href: '/settings/academic-years',
+        icon: Building2,
+        description: 'إدارة السنوات الدراسية النشطة، الفصول، والأقسام البيداغوجية',
+      },
+      {
+        name: 'إعدادات الطباعة',
+        href: '/settings/print',
+        icon: Printer,
+        description: 'الهوية الرسمية، الترويسة الجامعية، والموقعين المعتمدين',
+      },
+      {
+        name: 'سجل التغييرات والتراجع',
+        href: '/settings/audit-undo',
+        icon: History,
+        description: 'تدقيق التعديلات الحرجة والتراجع الذري خلال 24 ساعة',
+      },
+      {
+        name: 'النسخ الاحتياطي والمستخدمين',
+        href: '/settings/backups',
+        icon: Shield,
+        description: 'تنزيل نسخة احتياطية فورية (JSON/SQL) وإدارة الصلاحيات',
       },
     ],
   },

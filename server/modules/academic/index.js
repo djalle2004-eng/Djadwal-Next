@@ -4,10 +4,23 @@ const { unitOfWork } = require('../../../packages/core/src/unitOfWork.js');
 // --- Academic Years ---
 async function listAcademicYears(req, res) {
   try {
-    const rows = await executeQuery('SELECT * FROM academic_years ORDER BY year_name ASC');
+    const sql = `
+      SELECT y.*,
+             COALESCE((SELECT COUNT(*) FROM assignments a WHERE a.academic_year = y.year_name), 0)::int AS assignments_count,
+             COALESCE((SELECT COUNT(*) FROM extra_sessions e WHERE e.academic_year = y.year_name AND (e.is_archived = 0 OR e.is_archived IS NULL)), 0)::int AS extra_sessions_count
+      FROM academic_years y
+      ORDER BY y.year_name DESC
+    `;
+    const rows = await executeQuery(sql);
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    // Fallback if schema doesn't support subquery cast
+    try {
+      const fallbackRows = await executeQuery('SELECT * FROM academic_years ORDER BY year_name DESC');
+      res.json(fallbackRows);
+    } catch (fErr) {
+      res.status(500).json({ error: err.message });
+    }
   }
 }
 
