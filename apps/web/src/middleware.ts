@@ -38,7 +38,7 @@ export function middleware(request: NextRequest) {
   // Default to full set if not configured, or empty string "" for emergency rollback.
   const rawMigrated = process.env.MIGRATED_ROUTES !== undefined
     ? process.env.MIGRATED_ROUTES
-    : '/dashboard,/professors,/rooms,/courses,/groups,/schedule,/sessions,/print,/login';
+    : '/dashboard,/professors,/rooms,/courses,/groups,/schedule,/schedules,/sessions,/print,/login,/settings,/assignments,/available-rooms,/professor-workload';
 
   const migratedRoutes = rawMigrated
     .split(',')
