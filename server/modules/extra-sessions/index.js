@@ -140,13 +140,15 @@ async function listExtraSessions(req, res) {
     const params = [];
     let idx = 1;
 
-    if (academicYear) {
-      whereClauses.push(`s.academic_year = $${idx++}`);
+    if (academicYear && academicYear !== 'all') {
+      whereClauses.push(`(s.academic_year = $${idx++} OR s.academic_year IS NULL OR s.academic_year = '')`);
       params.push(academicYear);
     }
-    if (semester) {
+    if (semester && semester !== 'all') {
       whereClauses.push(`(
-        REPLACE(s.semester, 'ـ', '') = REPLACE($${idx++}, 'ـ', '')
+        s.semester IS NULL
+        OR s.semester = ''
+        OR REPLACE(s.semester, 'ـ', '') = REPLACE($${idx++}, 'ـ', '')
         OR REPLACE(REPLACE(s.semester, 'ـ', ''), 'السداسي', 'الفصل') = REPLACE(REPLACE($${idx++}, 'ـ', ''), 'السداسي', 'الفصل')
       )`);
       params.push(semester);
@@ -197,11 +199,9 @@ async function listExtraSessions(req, res) {
       ORDER BY s.session_date DESC, s.start_time ASC
     `;
 
-    if (req.query.limit) {
-      const limitVal = Math.min(Number(req.query.limit) || 100, 5000);
-      sql += ` LIMIT $${idx++}`;
-      params.push(limitVal);
-    }
+    const limitVal = req.query.limit ? Math.min(Number(req.query.limit) || 5000, 10000) : 5000;
+    sql += ` LIMIT $${idx++}`;
+    params.push(limitVal);
 
     const rows = await executeQuery(sql, params);
     res.json(rows);

@@ -359,7 +359,7 @@ export default function AvailableRoomsPage() {
         api.get<Group[]>('/catalog/groups?limit=300').catch(() => []),
         api.get<Department[]>('/catalog/departments?limit=100').catch(() => []),
         api.get<Assignment[]>(`/assignments?academicYear=${encodeURIComponent(academicYear)}&semester=${encodeURIComponent(semester)}&limit=3000`).catch(() => []),
-        api.listExtraSessions({ academicYear, semester, limit: 1000 }).catch(() => [])
+        api.listExtraSessions({ limit: 5000 }).catch(() => [])
       ]);
 
       setRooms(Array.isArray(rData) ? rData : []);
@@ -705,11 +705,24 @@ export default function AvailableRoomsPage() {
   // ===========================================================================
   // GROUPED SESSIONS FOR LOG TAB
   // ===========================================================================
+  const upcomingCount = useMemo(() => extraSessions.filter(s => !s.is_archived || s.is_archived === 0).length, [extraSessions]);
+  const archivedCount = useMemo(() => extraSessions.filter(s => s.is_archived === 1).length, [extraSessions]);
+
+  const getFormattedSessionDate = useCallback((sessionDate: string) => {
+    if (!sessionDate) return '';
+    const dayName = SYSTEM_DAYS.find(d => d.id === dateToSystemDay(sessionDate))?.name || '';
+    const parts = sessionDate.split('-');
+    if (parts.length === 3) {
+      return `${dayName} ${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return `${dayName} ${sessionDate}`;
+  }, []);
+
   const groupedExtraSessions = useMemo<GroupedExtraSession[]>(() => {
     const list = extraSessions.filter(s => {
       // Archive filter
       if (!showArchived && s.is_archived === 1) return false;
-      if (showArchived && s.is_archived !== 1) return false;
+      if (showArchived && (!s.is_archived || s.is_archived === 0)) return false;
       // Type filter
       if (logTypeFilter !== 'all' && s.session_type !== logTypeFilter) return false;
       // Search filter
@@ -748,7 +761,13 @@ export default function AvailableRoomsPage() {
         });
       }
     }
-    return Array.from(accMap.values());
+    const result = Array.from(accMap.values());
+    result.sort((a, b) => {
+      const cmpDate = (a.session_date || '').localeCompare(b.session_date || '');
+      if (cmpDate !== 0) return showArchived ? -cmpDate : cmpDate;
+      return (a.start_time || '').localeCompare(b.start_time || '');
+    });
+    return result;
   }, [extraSessions, showArchived, logTypeFilter, logSearch]);
 
   // ===========================================================================
@@ -1033,6 +1052,12 @@ export default function AvailableRoomsPage() {
     setPrintModalOpen(true);
   };
 
+  // Sessions List by Type Print Trigger
+  const handlePrintSessionsList = (type: string = 'all') => {
+    setDateRangeType(type);
+    setDateRangePrintOpen(true);
+  };
+
   // Date Range Print Trigger
   const handlePrintDateRangeList = () => {
     let filtered = extraSessions;
@@ -1175,7 +1200,7 @@ export default function AvailableRoomsPage() {
             </TabTrigger>
             <TabTrigger value="log" className="gap-2">
               <ClipboardList className="h-4 w-4" />
-              <span>جدول التعويضات والحصص ({extraSessions.length})</span>
+              <span>جدول التعويضات والحصص ({upcomingCount})</span>
             </TabTrigger>
           </TabsList>
 
@@ -2012,92 +2037,151 @@ export default function AvailableRoomsPage() {
           {/* ================================================================= */}
           <TabContent value="log">
             <Card>
-              <CardHeader className="pb-4 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-base font-bold flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 text-emerald-600" />
-                      <span>جدول الحصص التعويضية والإضافية المبرمجة ({groupedExtraSessions.length})</span>
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      إدارة وتعديل وأرشفة الحصص، وطباعة إعلانات الطلبة وكشوف الساعات الإضافية
-                    </CardDescription>
+              <CardHeader className="pb-4 space-y-4 border-b border-slate-100 dark:border-slate-800">
+                {/* 1. Top Controls Bar (Matching Screenshot) */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                  {/* نوع الحصة (Select dropdown on right in RTL) */}
+                  <div className="md:col-span-6">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      نوع الحصة
+                    </label>
+                    <select
+                      value={logTypeFilter}
+                      onChange={(e) => setLogTypeFilter(e.target.value)}
+                      className="w-full py-2.5 px-3 text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="all">جميع أنواع الحصص</option>
+                      <option value="extra">حصة إضافية</option>
+                      <option value="makeup">حصة تعويض</option>
+                      <option value="exam">إمتحان الأعمال الموجهة</option>
+                      <option value="semester_exam">إمتحان السداسي</option>
+                      <option value="revision">مراجعة</option>
+                    </select>
                   </div>
 
-                  {/* Top Action Buttons */}
-                  <div className="flex items-center flex-wrap gap-2">
-                    {/* Student Announcement Button */}
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => setAnnouncementDialogOpen(true)}
-                      className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
-                    >
-                      <FileText className="h-4 w-4" />
-                      <span>إعلان للطلبة 📝</span>
-                    </Button>
-
-                    {/* Date Range Print Button */}
+                  {/* عرض الأرشيف (Purple button in center) */}
+                  <div className="md:col-span-4">
+                    <label className="block text-xs font-semibold text-transparent mb-1 select-none">
+                      الأرشيف
+                    </label>
                     <Button
                       variant="outline"
-                      size="sm"
-                      onClick={() => setDateRangePrintOpen(true)}
-                      className="gap-1.5 text-xs font-semibold"
+                      onClick={() => setShowArchived(!showArchived)}
+                      className={`w-full py-2.5 px-4 text-xs font-bold border-2 transition-all rounded-xl ${
+                        showArchived
+                          ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700'
+                          : 'text-purple-700 border-purple-300 hover:bg-purple-50 dark:text-purple-400 dark:border-purple-800 dark:hover:bg-purple-950/40'
+                      }`}
                     >
-                      <Printer className="h-4 w-4" />
-                      <span>طباعة كشف الحصص</span>
+                      {showArchived ? `إخفاء الأرشيف (${archivedCount})` : `عرض الأرشيف (${archivedCount})`}
                     </Button>
+                  </div>
 
-                    {/* Manual Archive Button */}
+                  {/* أرشفة (Amber button on left in RTL) */}
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-transparent mb-1 select-none">
+                      أرشفة
+                    </label>
                     <Button
                       variant="outline"
-                      size="sm"
                       onClick={handleManualArchive}
                       disabled={isArchiving}
-                      className="gap-1.5 text-xs text-amber-700 dark:text-amber-400 font-semibold"
-                      title="أرشفة الحصص المنتهية تلقائياً"
+                      className="w-full py-2.5 px-3 text-xs font-bold text-amber-700 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-800 rounded-xl"
+                      title="أرشف جميع الحصص القديمة يدوياً"
                     >
-                      <Archive className="h-4 w-4" />
-                      <span>{isArchiving ? 'جاري الأرشفة...' : 'أرشفة المنقضية'}</span>
-                    </Button>
-
-                    {/* Show/Hide Archive Toggle */}
-                    <Button
-                      variant={showArchived ? 'primary' : 'outline'}
-                      size="sm"
-                      onClick={() => setShowArchived(!showArchived)}
-                      className="gap-1.5 text-xs font-semibold"
-                    >
-                      <span>{showArchived ? 'عرض الحصص القادمة' : 'عرض الأرشيف'}</span>
+                      <Archive className="h-4 w-4 ml-1.5" />
+                      <span>{isArchiving ? 'جاري الأرشفة...' : '🔄 أرشفة'}</span>
                     </Button>
                   </div>
                 </div>
 
-                {/* Search & Filter Bar */}
-                <div className="pt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  <Input
-                    type="text"
-                    placeholder="بحث سريع (أستاذ، مقياس، قاعة، فوج، تاريخ)..."
-                    value={logSearch}
-                    onChange={(e) => setLogSearch(e.target.value)}
-                    className="w-full text-xs"
-                  />
+                {/* 2. Blue Info Banner (Matching Screenshot) */}
+                <div className="bg-sky-500 text-white p-3.5 rounded-xl shadow-sm text-xs font-semibold flex flex-col sm:flex-row items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span>📊 {showArchived ? 'الحصص المؤرشفة' : 'الحصص القادمة'}: {showArchived ? archivedCount : upcomingCount} حصة</span>
+                    {!showArchived && (
+                      <>
+                        <span>|</span>
+                        <span>📦 الحصص المؤرشفة: {archivedCount} حصة</span>
+                      </>
+                    )}
+                  </div>
+                  {!showArchived && (
+                    <div className="text-sky-100 text-[11px] flex items-center gap-1 font-normal">
+                      <span>💡 يتم أرشفة الحصص المنتهية تلقائياً كل يوم</span>
+                    </div>
+                  )}
+                </div>
 
-                  <select
-                    value={logTypeFilter}
-                    onChange={(e) => setLogTypeFilter(e.target.value)}
-                    className="w-full py-2 px-3 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
+                {/* 3. Five Action Buttons (Matching Screenshot) */}
+                <div className="flex items-center flex-wrap gap-2.5 pt-1">
+                  {/* طباعة جميع الحصص */}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handlePrintSessionsList('all')}
+                    className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-sm"
                   >
-                    <option value="all">جميع أنواع الحصص</option>
-                    <option value="makeup">حصص تعويضية (Rattrapage)</option>
-                    <option value="extra">حصص إضافية (Séance supplémentaire)</option>
-                    <option value="exam">إمتحان الأعمال الموجهة (Examen TD)</option>
-                    <option value="semester_exam">إمتحان السداسي (Examen de semestre)</option>
-                    <option value="revision">حصص مراجعة (Révision)</option>
-                  </select>
+                    <Printer className="h-4 w-4" />
+                    <span>طباعة جميع الحصص</span>
+                  </Button>
 
-                  <div className="flex items-center text-xs text-slate-500">
-                    <span>يتم تجميع الأفواج المجتمعة في نفس الحصة تلقائياً</span>
+                  {/* طباعة الحصص الإضافية */}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handlePrintSessionsList('extra')}
+                    className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-sm"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span>طباعة الحصص الإضافية</span>
+                  </Button>
+
+                  {/* طباعة حصص التعويض */}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handlePrintSessionsList('makeup')}
+                    className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-sm"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span>طباعة حصص التعويض</span>
+                  </Button>
+
+                  {/* تعديل اسم رئيس القسم */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDepartmentHeadDialogOpen(true)}
+                    className="gap-1.5 border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-sky-800 dark:text-sky-400 text-xs font-bold py-2.5 px-4 rounded-xl shadow-sm"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    <span>تعديل اسم رئيس القسم</span>
+                  </Button>
+
+                  {/* إعلان للطلبة */}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setAnnouncementDialogOpen(true)}
+                    className="gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow-sm"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span>إعلان للطلبة 📝</span>
+                  </Button>
+                </div>
+
+                {/* 4. Quick Search Bar */}
+                <div className="pt-2">
+                  <div className="relative">
+                    <Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input
+                      type="text"
+                      placeholder="بحث سريع (أستاذ، مقياس، قاعة، فوج، تاريخ)..."
+                      value={logSearch}
+                      onChange={(e) => setLogSearch(e.target.value)}
+                      className="w-full text-xs pr-9"
+                    />
                   </div>
                 </div>
               </CardHeader>
@@ -2111,99 +2195,83 @@ export default function AvailableRoomsPage() {
                   <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
                     <table className="w-full text-start text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700">
-                          <th className="py-3 px-3 text-start">نوع الحصة</th>
-                          <th className="py-3 px-3 text-start">اليوم والتاريخ</th>
-                          <th className="py-3 px-3 text-start">التوقيت</th>
-                          <th className="py-3 px-3 text-start">الأستاذ</th>
-                          <th className="py-3 px-3 text-start">المقرر / المقياس</th>
-                          <th className="py-3 px-3 text-start">المجموعة / الأفواج</th>
-                          <th className="py-3 px-3 text-start">القاعة</th>
-                          <th className="py-3 px-3 text-center">الإجراءات</th>
+                        <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700">
+                          <th className="py-3.5 px-4 text-start font-bold">نوع الحصة</th>
+                          <th className="py-3.5 px-4 text-start font-bold">اليوم والتاريخ</th>
+                          <th className="py-3.5 px-4 text-start font-bold">التوقيت</th>
+                          <th className="py-3.5 px-4 text-start font-bold">الأستاذ</th>
+                          <th className="py-3.5 px-4 text-start font-bold">المقرر</th>
+                          <th className="py-3.5 px-4 text-start font-bold">المجموعة</th>
+                          <th className="py-3.5 px-4 text-start font-bold">القاعة</th>
+                          <th className="py-3.5 px-4 text-center font-bold">الإجراءات</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {groupedExtraSessions.map(session => (
                           <tr key={session.key} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3">
-                              <Badge
-                                variant={
-                                  session.session_type === 'exam' || session.session_type === 'semester_exam'
-                                    ? 'danger'
-                                    : session.session_type === 'makeup'
-                                    ? 'warning'
-                                    : 'info'
-                                }
-                              >
-                                {session.session_type === 'exam'
-                                  ? 'إمتحان TD'
-                                  : session.session_type === 'semester_exam'
-                                  ? 'إمتحان سداسي'
-                                  : session.session_type === 'makeup'
-                                  ? 'تعويضية'
-                                  : session.session_type === 'revision'
-                                  ? 'مراجعة'
-                                  : 'إضافية'}
-                              </Badge>
+                            <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-slate-300">
+                              {session.session_type === 'exam'
+                                ? 'إمتحان الأعمال الموجهة'
+                                : session.session_type === 'semester_exam'
+                                ? 'إمتحان السداسي'
+                                : session.session_type === 'makeup'
+                                ? 'حصة تعويض'
+                                : session.session_type === 'revision'
+                                ? 'مراجعة'
+                                : 'حصة إضافية'}
                             </td>
-                            <td className="py-3 px-3 font-mono font-semibold">
-                              {session.session_date}
-                              <span className="text-[11px] text-slate-500 block font-sans font-normal">
-                                {SYSTEM_DAYS.find(d => d.id === dateToSystemDay(session.session_date))?.name}
-                              </span>
+                            <td className="py-3.5 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                              {getFormattedSessionDate(session.session_date)}
                             </td>
-                            <td className="py-3 px-3 font-mono font-semibold">
+                            <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300">
                               {session.start_time} - {session.end_time}
                             </td>
-                            <td className="py-3 px-3 font-semibold text-slate-900 dark:text-slate-100">
+                            <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-slate-100">
                               {session.professor_name || 'أستاذ'}
                             </td>
-                            <td className="py-3 px-3 font-medium text-slate-800 dark:text-slate-200">
+                            <td className="py-3.5 px-4 font-medium text-slate-800 dark:text-slate-200">
                               {session.course_name || 'مقياس'}
                             </td>
-                            <td className="py-3 px-3 text-slate-700 dark:text-slate-300">
+                            <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
                               {session.group_names.join(' + ')}
                             </td>
-                            <td className="py-3 px-3 font-bold text-emerald-700 dark:text-emerald-400">
+                            <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
                               {session.room_name || 'قاعة'}
                             </td>
-                            <td className="py-3 px-3 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
-                                {/* Edit */}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => openEditModal(session)}
-                                  className="h-8 w-8 p-0 text-slate-600 hover:text-emerald-600"
-                                  title="تعديل الحصة"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-
+                            <td className="py-3.5 px-4 text-center">
+                              <div className="flex items-center justify-center gap-2">
                                 {/* Print Individual Certificate */}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                                <button
+                                  type="button"
                                   onClick={() => handlePrintCertificate(session)}
-                                  className="h-8 w-8 p-0 text-slate-600 hover:text-indigo-600"
+                                  className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
                                   title="طباعة شهادة الحصة الفردية للأستاذ"
                                 >
-                                  <Award className="h-4 w-4" />
-                                </Button>
+                                  <Printer className="h-4 w-4" />
+                                </button>
 
                                 {/* Delete */}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                                <button
+                                  type="button"
                                   onClick={() => {
                                     setSessionToDelete(session);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  className="h-8 w-8 p-0 text-slate-600 hover:text-rose-600"
+                                  className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors"
                                   title="إلغاء وحذف الحصة"
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </Button>
+                                </button>
+
+                                {/* Edit */}
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(session)}
+                                  className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
+                                  title="تعديل الحصة"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
                               </div>
                             </td>
                           </tr>
