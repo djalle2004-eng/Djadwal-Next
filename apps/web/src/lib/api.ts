@@ -282,6 +282,20 @@ export const api = {
     return apiFetch<any>(`/rooms/available?${q.toString()}`);
   },
 
+  listExtraSessions: (params?: any) => {
+    const q = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+      });
+    }
+    const qs = q.toString();
+    return apiFetch<any[]>(`/extra-sessions${qs ? `?${qs}` : ''}`);
+  },
+
+  getExtraSession: (id: number | string) =>
+    apiFetch<any>(`/extra-sessions/${id}`),
+
   checkExtraSessionConflicts: (data: any) =>
     apiFetch<any>('/extra-sessions/check-conflicts', { method: 'POST', body: JSON.stringify(data) }),
 

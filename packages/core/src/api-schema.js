@@ -150,9 +150,11 @@ const bulkImportAssignmentsSchema = z.object({
 
 const createExtraSessionSchema = z.object({
   group_id: z.coerce.number().int().optional().nullable(),
+  group_ids: z.array(z.coerce.number().int()).optional(),
+  room_ids: z.array(z.coerce.number().int()).optional(),
   course_id: z.coerce.number().int({ message: 'معرف المقياس مطلوب' }),
   professor_id: z.coerce.number().int({ message: 'معرف الأستاذ مطلوب' }),
-  room_id: z.coerce.number().int({ message: 'معرف القاعة مطلوب' }),
+  room_id: z.coerce.number().int().optional(),
   session_date: z.string().min(8, 'تاريخ الحصة مطلوب (YYYY-MM-DD)'),
   start_time: z.string().regex(/^\d{1,2}:\d{2}$/, 'توقيت البداية غير صالح (HH:mm)'),
   end_time: z.string().regex(/^\d{1,2}:\d{2}$/, 'توقيت النهاية غير صالح (HH:mm)'),
@@ -161,11 +163,14 @@ const createExtraSessionSchema = z.object({
   academic_year: z.string().optional().default(''),
   semester: z.string().optional().default(''),
   reason: z.string().optional().default(''),
-  exam_note: z.string().optional().default('')
+  exam_note: z.string().optional().default(''),
+  ignore_conflicts: z.boolean().optional().default(false)
 });
 
 const updateExtraSessionSchema = z.object({
   group_id: z.coerce.number().int().optional().nullable(),
+  group_ids: z.array(z.coerce.number().int()).optional(),
+  room_ids: z.array(z.coerce.number().int()).optional(),
   course_id: z.coerce.number().int().optional(),
   professor_id: z.coerce.number().int().optional(),
   room_id: z.coerce.number().int().optional(),
@@ -179,7 +184,8 @@ const updateExtraSessionSchema = z.object({
   reason: z.string().optional(),
   is_archived: z.coerce.number().int().optional(),
   exam_note: z.string().optional(),
-  version: z.coerce.number().int().optional()
+  version: z.coerce.number().int().optional(),
+  ignore_conflicts: z.boolean().optional()
 });
 
 module.exports = {

@@ -268,7 +268,14 @@ async function createExtraSession(req, res) {
       ignore_conflicts
     } = sessionData;
 
-    if (!session_date || !start_time || !end_time || !room_id || !professor_id || !sessionData.course_id) {
+    const targetRooms = Array.isArray(sessionData.room_ids) && sessionData.room_ids.length > 0
+      ? sessionData.room_ids.map(Number)
+      : (room_id ? [Number(room_id)] : []);
+    const targetGroups = Array.isArray(sessionData.group_ids) && sessionData.group_ids.length > 0
+      ? sessionData.group_ids.map(Number)
+      : (group_id ? [Number(group_id)] : [null]);
+
+    if (!session_date || !start_time || !end_time || targetRooms.length === 0 || !professor_id || !sessionData.course_id) {
       return res.status(400).json({
         error: 'MISSING_REQUIRED_FIELDS',
         message: 'الحقول المطلوبة: المقياس، الأستاذ، القاعة، التاريخ، توقيت البداية والنهاية'
@@ -276,50 +283,65 @@ async function createExtraSession(req, res) {
     }
 
     if (!ignore_conflicts) {
-      const conflicts = await findConflicts({
-        session_date,
-        start_time,
-        end_time,
-        room_id,
-        professor_id,
-        group_id,
-        academic_year,
-        semester
-      });
+      for (const rid of targetRooms) {
+        for (const gid of targetGroups) {
+          const conflicts = await findConflicts({
+            session_date,
+            start_time,
+            end_time,
+            room_id: rid,
+            professor_id,
+            group_id: gid,
+            academic_year,
+            semester
+          });
 
-      if (conflicts.length > 0) {
-        return res.status(409).json({
-          error: {
-            code: 'CONFLICT_DETECTED',
-            message_ar: conflicts[0].message,
-            details: conflicts
+          if (conflicts.length > 0) {
+            return res.status(409).json({
+              error: {
+                code: 'CONFLICT_DETECTED',
+                message_ar: conflicts[0].message,
+                details: conflicts
+              }
+            });
           }
-        });
+        }
       }
     }
 
-    const created = await uow.runInTransaction(async () => {
-      const payload = {
-        group_id: group_id ? Number(group_id) : null,
-        course_id: Number(sessionData.course_id),
-        professor_id: Number(professor_id),
-        room_id: Number(room_id),
-        session_date,
-        start_time,
-        end_time,
-        session_type: sessionData.session_type || 'makeup',
-        description: sessionData.description || '',
-        academic_year: sessionData.academic_year || '',
-        semester: sessionData.semester || '',
-        reason: sessionData.reason || '',
-        is_archived: 0,
-        exam_note: sessionData.exam_note || '',
-        version: 1
-      };
-      return await extraSessionsRepository.create(payload, uow);
+    const createdList = await uow.runInTransaction(async () => {
+      const results = [];
+      for (const rid of targetRooms) {
+        for (const gid of targetGroups) {
+          const payload = {
+            group_id: gid,
+            course_id: Number(sessionData.course_id),
+            professor_id: Number(professor_id),
+            room_id: rid,
+            session_date,
+            start_time,
+            end_time,
+            session_type: sessionData.session_type || 'makeup',
+            description: sessionData.description || '',
+            academic_year: sessionData.academic_year || '',
+            semester: sessionData.semester || '',
+            reason: sessionData.reason || '',
+            is_archived: 0,
+            exam_note: sessionData.exam_note || '',
+            version: 1
+          };
+          const created = await extraSessionsRepository.create(payload, uow);
+          results.push(created);
+        }
+      }
+      return results;
     });
 
-    res.status(201).json(created);
+    if (createdList.length === 1) {
+      res.status(201).json(createdList[0]);
+    } else {
+      res.status(201).json({ success: true, count: createdList.length, created: createdList[0], items: createdList });
+    }
   } catch (err) {
     console.error('createExtraSession error:', err);
     res.status(500).json({ error: 'FAILED_TO_CREATE_EXTRA_SESSION', message: err.message });
