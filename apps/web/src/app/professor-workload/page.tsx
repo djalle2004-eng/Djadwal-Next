@@ -227,19 +227,21 @@ export default function ProfessorWorkloadPage() {
 
   // Print Modals State
   const [printModalOpen, setPrintModalOpen] = useState<boolean>(false);
-  const [printType, setPrintType] = useState<'individual' | 'department_recap' | 'individual_schedule'>('individual');
+  const [printType, setPrintType] = useState<'individual' | 'department_recap' | 'individual_schedule' | 'official_assignment' | 'bulk_official_assignment'>('individual');
   const [printTargetProfessor, setPrintTargetProfessor] = useState<ProfessorWorkloadSummary | null>(null);
+  const [printSettings, setPrintSettings] = useState<any>(null);
 
   // Fetch all core datasets
   const loadData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [profData, courseData, groupData, deptData, assignData] = await Promise.all([
+      const [profData, courseData, groupData, deptData, assignData, psData] = await Promise.all([
         api.get<Professor[]>('/professors?limit=500').catch(() => []),
         api.get<Course[]>('/catalog/courses?limit=500').catch(() => []),
         api.get<Group[]>('/catalog/groups?limit=500').catch(() => []),
         api.get<any[]>('/catalog/departments').catch(() => []),
-        api.get<Assignment[]>(`/assignments?academicYear=${encodeURIComponent(academicYear)}&semester=${encodeURIComponent(semester)}&limit=3500`).catch(() => [])
+        api.get<Assignment[]>(`/assignments?academicYear=${encodeURIComponent(academicYear)}&semester=${encodeURIComponent(semester)}&limit=3500`).catch(() => []),
+        api.getPrintSettings().catch(() => null)
       ]);
 
       setProfessors(Array.isArray(profData) ? profData : []);
@@ -247,6 +249,7 @@ export default function ProfessorWorkloadPage() {
       setGroups(Array.isArray(groupData) ? groupData : []);
       setDepartments(Array.isArray(deptData) ? deptData : []);
       setAssignments(Array.isArray(assignData) ? assignData : []);
+      setPrintSettings(psData);
     } catch (err) {
       console.error('Error loading workload data:', err);
     } finally {
@@ -484,6 +487,202 @@ export default function ProfessorWorkloadPage() {
     document.body.removeChild(link);
   };
 
+  const renderOfficialAssignmentDocument = (w: ProfessorWorkloadSummary) => {
+    const todayFormatted = new Date().toLocaleDateString('ar-DZ') || new Date().toISOString().split('T')[0];
+    const city = printSettings?.city_name_ar || 'الوادي';
+    const refFormat = printSettings?.reference_number_format || 'الـرقم:................../ ك. ع. إ. ت. ع. ت/ ن. ع. م. د/ م. ت/ {year}';
+    const refString = refFormat.replace('{year}', academicYear);
+    const watermarkOpacity = printSettings?.watermark_opacity ?? 0.08;
+    const showWatermark = printSettings?.enable_watermark && printSettings?.university_logo_url;
+
+    return (
+      <div
+        key={w.professor.id}
+        className="relative p-6 text-slate-900 bg-white font-sans text-xs leading-relaxed page-break print:p-0 print:m-0 break-after-page print:break-after-page"
+        dir="rtl"
+      >
+        {/* University Watermark Background */}
+        {showWatermark && (
+          <div
+            className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0"
+            style={{ opacity: watermarkOpacity }}
+          >
+            <img
+              src={printSettings.university_logo_url}
+              alt="Watermark"
+              className="w-[420px] h-[420px] object-contain select-none"
+            />
+          </div>
+        )}
+
+        <div className="relative z-10 space-y-4">
+          {/* Official Triple Administrative Header */}
+          <div className="flex items-start justify-between border-b-2 border-slate-900 pb-3">
+            {/* Right: Faculty info & Faculty Logo */}
+            <div className="flex items-center gap-2.5 max-w-[38%]">
+              {printSettings?.faculty_logo_url && (
+                <img
+                  src={printSettings.faculty_logo_url}
+                  alt="Faculty Logo"
+                  className="h-14 w-14 object-contain shrink-0"
+                />
+              )}
+              <div className="text-right text-[10px] leading-tight space-y-0.5">
+                <p className="font-bold text-slate-900">{printSettings?.faculty_name_ar || 'كلية العلوم الاقتصادية والتجارية وعلوم التسيير'}</p>
+                <p className="text-slate-700">{printSettings?.deanery_name_ar || 'نيابة العمادة للدراسات والمسائل المرتبطة بالطلبة'}</p>
+                <p className="text-slate-600 font-medium">{printSettings?.service_name_ar || 'مصلحة التدريس'}</p>
+                <p className="font-mono text-[9px] text-slate-700 pt-0.5">{refString}</p>
+              </div>
+            </div>
+
+            {/* Center: Republic & Ministry */}
+            <div className="text-center space-y-0.5">
+              <p className="font-bold text-xs text-slate-900">{printSettings?.republic_name_ar || 'الجمهورية الجزائرية الديمقراطية الشعبية'}</p>
+              <p className="font-bold text-[11px] text-slate-800">{printSettings?.ministry_name_ar || 'وزارة التعليم العالي والبحث العلمي'}</p>
+              <p className="font-extrabold text-xs text-slate-950 pt-0.5">{printSettings?.university_name_ar || 'جامعة الشهيد حمه لخضر - الوادي'}</p>
+            </div>
+
+            {/* Left: University Logo */}
+            <div className="flex items-center justify-end max-w-[25%]">
+              {printSettings?.university_logo_url ? (
+                <img
+                  src={printSettings.university_logo_url}
+                  alt="University Logo"
+                  className="h-14 w-14 object-contain"
+                />
+              ) : (
+                <div className="h-14 w-14 border border-dashed rounded-lg flex items-center justify-center text-[9px] text-slate-400">شعار الجامعة</div>
+              )}
+            </div>
+          </div>
+
+          {/* Framed Document Title */}
+          <div className="text-center pt-1">
+            <div className="inline-block border-2 border-slate-950 px-8 py-2 rounded-lg bg-slate-50 font-extrabold text-sm text-slate-900 shadow-sm">
+              تكليف بمقاييس {semester} للموسم الجامعي : {academicYear}
+            </div>
+          </div>
+
+          {/* Preface & Professor Details */}
+          <div className="space-y-1.5 border border-slate-300 bg-slate-50/80 p-3 rounded-xl text-xs">
+            <p className="text-slate-800 leading-relaxed">
+              نحيط علم سيادتكم أنه قد تم تكليفكم بالمقاييس التالية ابتداءً من انطلاق السداسي:
+            </p>
+            <div className="grid grid-cols-2 gap-4 pt-1 border-t border-slate-200 text-slate-900">
+              <div>
+                <span className="font-bold">الاسم واللقب: </span>
+                <span className="font-semibold text-blue-950">{w.professor.name}</span>
+              </div>
+              <div>
+                <span className="font-bold">الصفة / الرتبة الأكاديمية: </span>
+                <span className="font-medium">{w.rankLabel}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Table 1: ملخص الحجم الساعي الأسبوعي */}
+          <div className="space-y-1">
+            <h4 className="font-bold text-xs text-slate-900">1. ملخص الحجم الساعي الأسبوعي:</h4>
+            <table className="w-full text-xs border border-slate-800 border-collapse text-center">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-800 font-bold">
+                  <th className="p-1.5 border border-slate-800">المحاضرات</th>
+                  <th className="p-1.5 border border-slate-800">الأعمال الموجهة</th>
+                  <th className="p-1.5 border border-slate-800">الأعمال التطبيقية</th>
+                  <th className="p-1.5 border border-slate-800 bg-slate-200 font-extrabold">المجموع الكلي</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="font-bold font-mono">
+                  <td className="p-1.5 border border-slate-800">{w.totalLectureHours.toFixed(1)} سا</td>
+                  <td className="p-1.5 border border-slate-800">{w.totalTDHours.toFixed(1)} سا</td>
+                  <td className="p-1.5 border border-slate-800">0.0 سا</td>
+                  <td className="p-1.5 border border-slate-800 bg-slate-100 font-extrabold text-blue-900">{w.totalWeeklyHours.toFixed(1)} سا</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table 2: تفاصيل المقاييس المكلف بها */}
+          <div className="space-y-1">
+            <h4 className="font-bold text-xs text-slate-900">2. تفاصيل المقاييس المكلف بها:</h4>
+            <table className="w-full text-xs border border-slate-800 border-collapse">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-800 font-bold text-center">
+                  <th className="p-1.5 border border-slate-800 text-start">المقرر / المقياس</th>
+                  <th className="p-1.5 border border-slate-800">عدد الساعات</th>
+                  <th className="p-1.5 border border-slate-800">عدد الحصص</th>
+                  <th className="p-1.5 border border-slate-800">الإجمالي</th>
+                  <th className="p-1.5 border border-slate-800 text-start">التخصص</th>
+                  <th className="p-1.5 border border-slate-800">المستوى</th>
+                </tr>
+              </thead>
+              <tbody>
+                {w.coursesBreakdown.map((course, idx) => (
+                  <tr key={idx} className="border-b border-slate-800 text-center">
+                    <td className="p-1.5 border border-slate-800 text-start font-bold">{course.courseName}</td>
+                    <td className="p-1.5 border border-slate-800 font-mono">{(course.lectureHours + course.tdHours).toFixed(1)}</td>
+                    <td className="p-1.5 border border-slate-800 font-mono">{course.totalCount}</td>
+                    <td className="p-1.5 border border-slate-800 font-mono font-bold">{course.totalHours.toFixed(1)}</td>
+                    <td className="p-1.5 border border-slate-800 text-start">{course.specialization || '-'}</td>
+                    <td className="p-1.5 border border-slate-800">{course.level || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table 3: التوزيع اليومي للحصص */}
+          <div className="space-y-1">
+            <h4 className="font-bold text-xs text-slate-900">3. التوزيع اليومي للحصص:</h4>
+            <table className="w-full text-xs border border-slate-800 border-collapse text-center">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-800 font-bold">
+                  <th className="p-1.5 border border-slate-800 text-start">اليوم</th>
+                  <th className="p-1.5 border border-slate-800">عدد الحصص</th>
+                  <th className="p-1.5 border border-slate-800">عدد الساعات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(w.dayMap).map(([dayName, data]) => (
+                  <tr key={dayName} className="border-b border-slate-800">
+                    <td className="p-1.5 border border-slate-800 text-start font-bold">{dayName}</td>
+                    <td className="p-1.5 border border-slate-800 font-mono">{data.count}</td>
+                    <td className="p-1.5 border border-slate-800 font-mono font-semibold">{data.hours.toFixed(1)} سا</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Closing & Signatures */}
+          <div className="pt-3 space-y-3">
+            <p className="text-center font-bold text-xs text-slate-900">
+              وفي الأخير تقبلوا منا أسمى عبارات التقدير والاحترام
+            </p>
+
+            <div className="flex justify-between items-end pt-2 px-4">
+              <div className="text-start font-bold text-xs">
+                <p>{city} في: {todayFormatted}</p>
+              </div>
+              <div className="text-center space-y-0.5">
+                <p className="font-bold text-xs text-slate-950">
+                  {printSettings?.vice_dean_title || 'نائب العميد المكلف بالدراسات والمسائل المرتبطة بالطلبة'}
+                </p>
+                {printSettings?.vice_dean_name && (
+                  <p className="text-xs text-slate-800 font-semibold">{printSettings.vice_dean_name}</p>
+                )}
+                <div className="h-14 w-44 mt-1 border-t-2 border-slate-900 pt-1 text-[10px] text-slate-400">
+                  التوقيع والختم الرسمي
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 pb-20" dir="rtl">
       {/* Top Header & Navigation Bar */}
@@ -624,7 +823,20 @@ export default function ProfessorWorkloadPage() {
                     </CardDescription>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        setPrintType('bulk_official_assignment');
+                        setPrintModalOpen(true);
+                      }}
+                      className="gap-1.5 text-xs bg-indigo-700 hover:bg-indigo-800 text-white shadow-sm font-semibold"
+                    >
+                      <Award className="h-3.5 w-3.5" />
+                      <span>طباعة وثائق التكليف لكافة الأساتذة (دفعة واحدة)</span>
+                    </Button>
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -849,6 +1061,21 @@ export default function ProfessorWorkloadPage() {
                                   التفاصيل
                                 </Button>
 
+                                {/* Official Assignment Document */}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setPrintTargetProfessor(w);
+                                    setPrintType('official_assignment');
+                                    setPrintModalOpen(true);
+                                  }}
+                                  className="h-7 w-7 p-0 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                                  title="طباعة وثيقة التكليف الرسمية بمقاييس السداسي"
+                                >
+                                  <Award className="h-3.5 w-3.5" />
+                                </Button>
+
                                 {/* Print Card */}
                                 <Button
                                   variant="ghost"
@@ -923,6 +1150,21 @@ export default function ProfessorWorkloadPage() {
                             </option>
                           ))}
                         </select>
+
+                        {/* Print Official Assignment Document */}
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => {
+                            setPrintTargetProfessor(activeDrilldownWorkload);
+                            setPrintType('official_assignment');
+                            setPrintModalOpen(true);
+                          }}
+                          className="gap-1.5 text-xs bg-indigo-700 hover:bg-indigo-800 text-white font-semibold shadow-sm"
+                        >
+                          <Award className="h-3.5 w-3.5" />
+                          <span>وثيقة التكليف بمقاييس السداسي (رسمية)</span>
+                        </Button>
 
                         {/* Print Individual Card */}
                         <Button
@@ -1116,11 +1358,15 @@ export default function ProfessorWorkloadPage() {
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <Printer className="h-5 w-5 text-blue-600" />
               <span>
-                {printType === 'individual'
+                {printType === 'official_assignment'
+                  ? 'وثيقة التكليف الرسمية بمقاييس السداسي'
+                  : printType === 'bulk_official_assignment'
+                  ? `طباعة وثائق التكليف الرسمية لكافة الأساتذة (${filteredWorkloads.filter(w => w.totalWeeklyHours > 0).length} أستاذ)`
+                  : printType === 'individual'
                   ? 'بطاقة العبء البيداغوجي الفردية (Fiche de Service)'
                   : printType === 'individual_schedule'
-                    ? 'جدول التوقيت الأسبوعي للأستاذ'
-                    : 'الكشف الإجمالي لأعباء ونصاب أساتذة القسم (État Récapitulatif)'}
+                  ? 'جدول التوقيت الأسبوعي للأستاذ'
+                  : 'الكشف الإجمالي لأعباء ونصاب أساتذة القسم (État Récapitulatif)'}
               </span>
             </DialogTitle>
             <Button
@@ -1137,15 +1383,31 @@ export default function ProfessorWorkloadPage() {
           {/* Printable Sheet */}
           <div className="bg-white p-6 border rounded-xl print:p-0 print:border-none text-slate-900">
             {/* Algerian Official Header */}
-            <div className="text-center border-b pb-4 mb-4">
-              <h2 className="font-bold text-sm">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
-              <h3 className="font-bold text-xs mt-0.5">وزارة التعليم العالي والبحث العلمي</h3>
-              <h4 className="font-semibold text-xs mt-0.5">جامعة الشهيد حمه لخضر - الوادي</h4>
-              <h5 className="text-xs text-slate-600 mt-0.5">كلية العلوم الاقتصادية والتجارية وعلوم التسيير</h5>
-              <div className="text-[11px] text-slate-500 mt-1 font-mono">
-                السنة الجامعية: {academicYear} | {semester}
+            {printType !== 'official_assignment' && printType !== 'bulk_official_assignment' && (
+              <div className="text-center border-b pb-4 mb-4">
+                <h2 className="font-bold text-sm">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
+                <h3 className="font-bold text-xs mt-0.5">وزارة التعليم العالي والبحث العلمي</h3>
+                <h4 className="font-semibold text-xs mt-0.5">جامعة الشهيد حمه لخضر - الوادي</h4>
+                <h5 className="text-xs text-slate-600 mt-0.5">كلية العلوم الاقتصادية والتجارية وعلوم التسيير</h5>
+                <div className="text-[11px] text-slate-500 mt-1 font-mono">
+                  السنة الجامعية: {academicYear} | {semester}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* View 0A: Individual Official Assignment Document */}
+            {printType === 'official_assignment' && printTargetProfessor && (
+              renderOfficialAssignmentDocument(printTargetProfessor)
+            )}
+
+            {/* View 0B: Bulk Official Assignment Documents for All Professors */}
+            {printType === 'bulk_official_assignment' && (
+              <div className="space-y-12">
+                {filteredWorkloads
+                  .filter((w) => w.totalWeeklyHours > 0)
+                  .map((w) => renderOfficialAssignmentDocument(w))}
+              </div>
+            )}
 
             {/* View 1: Individual Fiche de Service */}
             {printType === 'individual' && printTargetProfessor && (

@@ -15,6 +15,10 @@ import {
   UserCheck,
   Layout,
   RefreshCw,
+  Award,
+  Upload,
+  Trash2,
+  Image as ImageIcon,
   X
 } from 'lucide-react';
 
@@ -41,8 +45,15 @@ export interface PrintSettingsData {
   university_name_ar: string;
   faculty_name_ar: string;
   department_name_ar: string;
+  deanery_name_ar: string;
+  service_name_ar: string;
+  reference_number_format: string;
+  city_name_ar: string;
   university_logo_url?: string;
   faculty_logo_url?: string;
+  enable_watermark: boolean;
+  watermark_opacity: number;
+  logo_size: number;
   schedule_officer_title: string;
   schedule_officer_name: string;
   department_head_title: string;
@@ -68,8 +79,15 @@ const DEFAULT_SETTINGS: PrintSettingsData = {
   university_name_ar: 'جامعة الشهيد حمه لخضر - الوادي',
   faculty_name_ar: 'كلية العلوم الاقتصادية والتجارية وعلوم التسيير',
   department_name_ar: 'قسم التدريس والبرمجة البيداغوجية',
+  deanery_name_ar: 'نيابة العمادة للدراسات والمسائل المرتبطة بالطلبة',
+  service_name_ar: 'مصلحة التدريس',
+  reference_number_format: '2027-2026 / ك ع ا . ت. ع. ت / ن. ع. م. د / م ت',
+  city_name_ar: 'الوادي',
   university_logo_url: '',
   faculty_logo_url: '',
+  enable_watermark: true,
+  watermark_opacity: 0.08,
+  logo_size: 80,
   schedule_officer_title: 'مسؤول التوقيت والبرمجة',
   schedule_officer_name: 'أ. د. بلقاسم',
   department_head_title: 'رئيس القسم',
@@ -165,6 +183,23 @@ export default function PrintSettingsPage() {
     }
   };
 
+  const handleLogoFileUpload = (field: 'university_logo_url' | 'faculty_logo_url', file: File) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('error', 'حجم الصورة يجب أن لا يتجاوز 2 ميجابايت');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        handleChange(field, dataUrl);
+        showToast('success', 'تم تحميل الشعار بنجاح');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 pb-16 font-sans" dir="rtl">
       {/* Toast Notification */}
@@ -208,7 +243,7 @@ export default function PrintSettingsPage() {
                 <Badge variant="primary">Standardized A4 Engine</Badge>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                توحيد الترويسة الجامعية، الموقعين المعتمدين، وتنسيق الطباعة لكافة الجداول والتقارير
+                توحيد الترويسة الجامعية، الشعارات، العلامة المائية، والموقعين المعتمدين لكافة الجداول والوثائق
               </p>
             </div>
           </div>
@@ -250,15 +285,19 @@ export default function PrintSettingsPage() {
                   <span>تخصيص معايير الطباعة</span>
                 </CardTitle>
                 <CardDescription>
-                  التعديلات هنا تنعكس فوراً على المعاينة المباشرة وتُطبَّق على كافة وثائق الكلية
+                  التعديلات هنا تنعكس فوراً على المعاينة المباشرة وتُطبَّق على كافة وثائق وإعلانات الكلية
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="identity" value={activeTab} onValueChange={setActiveTab}>
-                  <TabsList className="grid grid-cols-3 w-full mb-6">
+                  <TabsList className="grid grid-cols-4 w-full mb-6">
                     <TabTrigger value="identity" className="gap-1.5 text-xs">
                       <Building className="h-3.5 w-3.5" />
-                      <span>الترويسة والهوية</span>
+                      <span>الترويسة الإدارية</span>
+                    </TabTrigger>
+                    <TabTrigger value="logos" className="gap-1.5 text-xs">
+                      <Award className="h-3.5 w-3.5" />
+                      <span>الشعارات والمائية</span>
                     </TabTrigger>
                     <TabTrigger value="signatories" className="gap-1.5 text-xs">
                       <UserCheck className="h-3.5 w-3.5" />
@@ -270,7 +309,7 @@ export default function PrintSettingsPage() {
                     </TabTrigger>
                   </TabsList>
 
-                  {/* TAB 1: University Identity */}
+                  {/* TAB 1: Administrative Identity */}
                   <TabContent value="identity">
                     <div className="space-y-4">
                       <div>
@@ -287,7 +326,7 @@ export default function PrintSettingsPage() {
 
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          الوزارة *
+                          الوزارة الوصية *
                         </label>
                         <Input
                           type="text"
@@ -322,9 +361,63 @@ export default function PrintSettingsPage() {
                         </div>
                       </div>
 
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            نيابة العمادة المكلفة *
+                          </label>
+                          <Input
+                            type="text"
+                            value={settings.deanery_name_ar}
+                            onChange={(e) => handleChange('deanery_name_ar', e.target.value)}
+                            className="w-full text-xs font-medium"
+                            placeholder="نيابة العمادة للدراسات والمسائل المرتبطة بالطلبة"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            مصلحة التدريس / القسم الإداري *
+                          </label>
+                          <Input
+                            type="text"
+                            value={settings.service_name_ar}
+                            onChange={(e) => handleChange('service_name_ar', e.target.value)}
+                            className="w-full text-xs font-medium"
+                            placeholder="مصلحة التدريس"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            صيغة الرقم المرجعي الإداري
+                          </label>
+                          <Input
+                            type="text"
+                            value={settings.reference_number_format}
+                            onChange={(e) => handleChange('reference_number_format', e.target.value)}
+                            className="w-full text-xs font-mono"
+                            placeholder="2027-2026 / ك ع ا . ت. ع. ت / ن. ع. م. د / م ت"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            المدينة الإدارية (تاريخ الوثائق)
+                          </label>
+                          <Input
+                            type="text"
+                            value={settings.city_name_ar}
+                            onChange={(e) => handleChange('city_name_ar', e.target.value)}
+                            className="w-full text-xs font-medium"
+                            placeholder="الوادي"
+                          />
+                        </div>
+                      </div>
+
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                          القسم البيداغوجي / المصلحة
+                          القسم البيداغوجي الافتراضي
                         </label>
                         <Input
                           type="text"
@@ -336,29 +429,191 @@ export default function PrintSettingsPage() {
                     </div>
                   </TabContent>
 
-                  {/* TAB 2: Signatories & Footers */}
+                  {/* TAB 2: Logos & Watermark */}
+                  <TabContent value="logos">
+                    <div className="space-y-6">
+                      {/* University Logo Card */}
+                      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            شعار الجامعة (University Logo)
+                          </label>
+                          {settings.university_logo_url && (
+                            <button
+                              type="button"
+                              onClick={() => handleChange('university_logo_url', '')}
+                              className="text-[11px] text-rose-600 hover:underline"
+                            >
+                              إزالة الشعار
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <div className="h-16 w-16 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center bg-white dark:bg-slate-800 shrink-0 overflow-hidden shadow-inner">
+                            {settings.university_logo_url ? (
+                              <img
+                                src={settings.university_logo_url}
+                                alt="شعار الجامعة"
+                                className="h-full w-full object-contain p-1"
+                              />
+                            ) : (
+                              <Building className="h-6 w-6 text-slate-300" />
+                            )}
+                          </div>
+
+                          <div className="flex-1 space-y-2">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleLogoFileUpload('university_logo_url', file);
+                              }}
+                              className="block w-full text-xs text-slate-500 file:mr-0 file:ml-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-950 dark:file:text-indigo-300"
+                            />
+                            <Input
+                              type="text"
+                              placeholder="أو ألصق رابط الشعار المباشر (URL أو Base64)..."
+                              value={settings.university_logo_url || ''}
+                              onChange={(e) => handleChange('university_logo_url', e.target.value)}
+                              className="w-full text-[11px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Faculty Logo Card */}
+                      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            شعار الكلية (Faculty Logo)
+                          </label>
+                          {settings.faculty_logo_url && (
+                            <button
+                              type="button"
+                              onClick={() => handleChange('faculty_logo_url', '')}
+                              className="text-[11px] text-rose-600 hover:underline"
+                            >
+                              إزالة الشعار
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <div className="h-16 w-16 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center bg-white dark:bg-slate-800 shrink-0 overflow-hidden shadow-inner">
+                            {settings.faculty_logo_url ? (
+                              <img
+                                src={settings.faculty_logo_url}
+                                alt="شعار الكلية"
+                                className="h-full w-full object-contain p-1"
+                              />
+                            ) : (
+                              <Award className="h-6 w-6 text-slate-300" />
+                            )}
+                          </div>
+
+                          <div className="flex-1 space-y-2">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleLogoFileUpload('faculty_logo_url', file);
+                              }}
+                              className="block w-full text-xs text-slate-500 file:mr-0 file:ml-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-950 dark:file:text-indigo-300"
+                            />
+                            <Input
+                              type="text"
+                              placeholder="أو ألصق رابط الشعار المباشر (URL أو Base64)..."
+                              value={settings.faculty_logo_url || ''}
+                              onChange={(e) => handleChange('faculty_logo_url', e.target.value)}
+                              className="w-full text-[11px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Watermark & Sizing Controls */}
+                      <div className="p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/60 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-900 dark:text-slate-100">
+                            <input
+                              type="checkbox"
+                              checked={settings.enable_watermark}
+                              onChange={(e) => handleChange('enable_watermark', e.target.checked)}
+                              className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                            />
+                            <span>تفعيل العلامة المائية (Watermark) لشعار الجامعة في خلفية الورقة</span>
+                          </label>
+                          <Badge variant={settings.enable_watermark ? 'success' : 'neutral'}>
+                            {settings.enable_watermark ? 'مفعلة' : 'معطلة'}
+                          </Badge>
+                        </div>
+
+                        {settings.enable_watermark && (
+                          <div className="space-y-1.5 pt-2 border-t border-indigo-100 dark:border-indigo-900/40">
+                            <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              <span>شفافية العلامة المائية:</span>
+                              <span className="font-mono">{Math.round((settings.watermark_opacity || 0.08) * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.03"
+                              max="0.25"
+                              step="0.01"
+                              value={settings.watermark_opacity || 0.08}
+                              onChange={(e) => handleChange('watermark_opacity', parseFloat(e.target.value))}
+                              className="w-full accent-indigo-600 cursor-pointer"
+                            />
+                            <span className="text-[10px] text-slate-500 block">
+                              القيمة الموصى بها هي 8% لضمان وضوح نصوص وجداول الطباعة
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5 pt-2 border-t border-indigo-100 dark:border-indigo-900/40">
+                          <div className="flex justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <span>حجم الشعار في الترويسة:</span>
+                            <span className="font-mono">{settings.logo_size || 80}px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="60"
+                            max="140"
+                            step="5"
+                            value={settings.logo_size || 80}
+                            onChange={(e) => handleChange('logo_size', parseInt(e.target.value))}
+                            className="w-full accent-indigo-600 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </TabContent>
+
+                  {/* TAB 3: Signatories & Footers */}
                   <TabContent value="signatories">
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border">
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            صفة الموقع الأول (اليمين)
+                            صفة نائب العميد (الموقع الرئيسي لوثيقة التكليف)
                           </label>
                           <Input
                             type="text"
-                            value={settings.schedule_officer_title}
-                            onChange={(e) => handleChange('schedule_officer_title', e.target.value)}
+                            value={settings.vice_dean_title}
+                            onChange={(e) => handleChange('vice_dean_title', e.target.value)}
                             className="w-full text-xs"
                           />
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            اسم الموقع الأول
+                            اسم نائب العميد
                           </label>
                           <Input
                             type="text"
-                            value={settings.schedule_officer_name}
-                            onChange={(e) => handleChange('schedule_officer_name', e.target.value)}
+                            value={settings.vice_dean_name}
+                            onChange={(e) => handleChange('vice_dean_name', e.target.value)}
                             className="w-full text-xs font-medium"
                           />
                         </div>
@@ -367,7 +622,7 @@ export default function PrintSettingsPage() {
                       <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border">
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            صفة الموقع الثاني (الوسط)
+                            صفة رئيس القسم (الموقع الرئيسي لإعلانات الطلبة)
                           </label>
                           <Input
                             type="text"
@@ -378,7 +633,7 @@ export default function PrintSettingsPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            اسم الموقع الثاني
+                            اسم رئيس القسم
                           </label>
                           <Input
                             type="text"
@@ -392,23 +647,23 @@ export default function PrintSettingsPage() {
                       <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border">
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            صفة الموقع الثالث (اليسار)
+                            صفة مسؤول التوقيت والبرمجة
                           </label>
                           <Input
                             type="text"
-                            value={settings.vice_dean_title}
-                            onChange={(e) => handleChange('vice_dean_title', e.target.value)}
+                            value={settings.schedule_officer_title}
+                            onChange={(e) => handleChange('schedule_officer_title', e.target.value)}
                             className="w-full text-xs"
                           />
                         </div>
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                            اسم الموقع الثالث
+                            اسم مسؤول التوقيت والبرمجة
                           </label>
                           <Input
                             type="text"
-                            value={settings.vice_dean_name}
-                            onChange={(e) => handleChange('vice_dean_name', e.target.value)}
+                            value={settings.schedule_officer_name}
+                            onChange={(e) => handleChange('schedule_officer_name', e.target.value)}
                             className="w-full text-xs font-medium"
                           />
                         </div>
@@ -428,7 +683,7 @@ export default function PrintSettingsPage() {
                     </div>
                   </TabContent>
 
-                  {/* TAB 3: Layout & Paper */}
+                  {/* TAB 4: Layout & Paper */}
                   <TabContent value="layout">
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
@@ -442,7 +697,7 @@ export default function PrintSettingsPage() {
                             className="w-full py-2 px-3 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
                           >
                             <option value="landscape">أفقي (Landscape - مناسب للجداول الأسبوعية)</option>
-                            <option value="portrait">عمودي (Portrait - مناسب للإعلانات والقرارات)</option>
+                            <option value="portrait">عمودي (Portrait - مناسب لوثائق التكليف والإعلانات)</option>
                           </select>
                         </div>
 
@@ -512,57 +767,103 @@ export default function PrintSettingsPage() {
 
                 <CardContent className="p-4 bg-slate-100/70 dark:bg-slate-900/60 overflow-hidden">
                   {/* Paper Simulation */}
-                  <div className="bg-white text-slate-900 p-5 rounded-xl border border-slate-300 shadow-sm text-center text-xs space-y-4">
-                    {/* Header */}
-                    <div className="border-b pb-3 space-y-1">
-                      <p className="font-bold text-[11px] leading-tight">{settings.republic_name_ar}</p>
-                      <p className="font-bold text-[10px] text-slate-700 leading-tight">{settings.ministry_name_ar}</p>
-                      <p className="font-semibold text-[10px] text-indigo-900 leading-tight">
-                        {settings.university_name_ar} | {settings.faculty_name_ar}
-                      </p>
-                      {settings.department_name_ar && (
-                        <p className="text-[9px] text-slate-600">{settings.department_name_ar}</p>
-                      )}
-                      <div className="pt-2">
-                        <span className="inline-block px-3 py-1 font-bold rounded-lg border border-slate-900 text-[11px] bg-slate-50">
-                          جدول التوقيت الأسبوعي العام (نموذج معتمد)
-                        </span>
+                  <div className="relative bg-white text-slate-900 p-5 rounded-xl border border-slate-300 shadow-sm text-center text-xs space-y-4 overflow-hidden">
+                    {/* Watermark in Preview */}
+                    {settings.enable_watermark && settings.university_logo_url && (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center pointer-events-none z-0"
+                        style={{ opacity: settings.watermark_opacity || 0.08 }}
+                      >
+                        <img
+                          src={settings.university_logo_url}
+                          alt="Watermark"
+                          className="w-48 h-48 object-contain"
+                        />
+                      </div>
+                    )}
+
+                    {/* Official Triple Header with Logos */}
+                    <div className="relative z-10 border-b pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        {/* Right: Faculty Logo & Admin */}
+                        <div className="text-right text-[9px] w-1/3 leading-tight space-y-0.5">
+                          {settings.faculty_logo_url ? (
+                            <img
+                              src={settings.faculty_logo_url}
+                              alt="Faculty Logo"
+                              className="h-9 object-contain mb-1"
+                            />
+                          ) : (
+                            <div className="h-9 w-9 rounded border border-dashed flex items-center justify-center text-[8px] text-slate-400 mb-1">
+                              شعار الكلية
+                            </div>
+                          )}
+                          <p className="font-bold text-slate-800">{settings.faculty_name_ar}</p>
+                          <p className="text-slate-600">{settings.deanery_name_ar}</p>
+                          <p className="text-slate-500">{settings.service_name_ar}</p>
+                        </div>
+
+                        {/* Center: State & Ministry */}
+                        <div className="text-center w-1/3 leading-tight space-y-1">
+                          <p className="font-bold text-[10px]">{settings.republic_name_ar}</p>
+                          <p className="font-semibold text-[9px] text-slate-700">{settings.ministry_name_ar}</p>
+                          <div className="pt-1">
+                            <span className="inline-block px-2 py-0.5 font-bold rounded border border-slate-900 text-[10px] bg-slate-50">
+                              نموذج الوثيقة الإدارية
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Left: University Logo & Reference Number */}
+                        <div className="text-left text-[9px] w-1/3 leading-tight space-y-0.5 flex flex-col items-end">
+                          {settings.university_logo_url ? (
+                            <img
+                              src={settings.university_logo_url}
+                              alt="University Logo"
+                              className="h-9 object-contain mb-1"
+                            />
+                          ) : (
+                            <div className="h-9 w-9 rounded border border-dashed flex items-center justify-center text-[8px] text-slate-400 mb-1">
+                              شعار الجامعة
+                            </div>
+                          )}
+                          <p className="font-bold text-slate-800">{settings.university_name_ar}</p>
+                          <p className="text-slate-500 font-mono text-[8px] mt-0.5" dir="ltr">
+                            الرقم: ... / {settings.reference_number_format?.split('/')?.[0] || '2026-2027'}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Mock Table */}
-                    <div className="space-y-1 text-[9px] border rounded-lg p-2 bg-slate-50">
-                      <div className="flex justify-between font-bold border-b pb-1">
-                        <span>السنة: 2026-2027</span>
+                    {/* Mock Content */}
+                    <div className="relative z-10 space-y-2 text-[9px] border rounded-lg p-2.5 bg-slate-50/80 backdrop-blur-[1px]">
+                      <div className="flex justify-between font-bold border-b pb-1 text-[10px]">
+                        <span>الموسم الجامعي: 2026-2027</span>
                         <span>السداسي الأول</span>
-                        <span>التخصص: ليسانس اقتصاد</span>
+                        <span>{settings.city_name_ar} في: {new Date().toLocaleDateString('fr-FR')}</span>
                       </div>
-                      <div className="grid grid-cols-4 gap-1 pt-1 text-center">
-                        <div className="p-1 rounded bg-indigo-100 font-semibold">محاضرة: اقتصاد كلي</div>
-                        <div className="p-1 rounded bg-emerald-100 font-semibold">TD: إحصاء 1</div>
-                        <div className="p-1 rounded bg-amber-100 font-semibold">TP: إعلام آلي</div>
-                        <div className="p-1 rounded bg-slate-100 text-slate-500">فترة شاغرة</div>
+                      <div className="grid grid-cols-4 gap-1 pt-1 text-center font-medium">
+                        <div className="p-1 rounded bg-indigo-100/90 text-indigo-900 font-semibold">المحاضرات: 3.0 س</div>
+                        <div className="p-1 rounded bg-emerald-100/90 text-emerald-900 font-semibold">الأعمال الموجهة: 4.5 س</div>
+                        <div className="p-1 rounded bg-amber-100/90 text-amber-900 font-semibold">الأعمال التطبيقية: 0.0 س</div>
+                        <div className="p-1 rounded bg-slate-200/90 font-bold">المجموع: 7.5 س</div>
                       </div>
                     </div>
 
                     {/* Footer Note */}
                     {settings.custom_footer_ar && (
-                      <p className="text-[9px] text-slate-500 italic text-start pt-1">
+                      <p className="relative z-10 text-[9px] text-slate-500 italic text-start pt-1">
                         {settings.custom_footer_ar}
                       </p>
                     )}
 
                     {/* Signatures */}
-                    <div className="grid grid-cols-3 gap-2 pt-4 border-t text-[9px] text-center">
-                      <div>
-                        <p className="font-bold">{settings.schedule_officer_title}</p>
-                        <p className="text-slate-600 mt-0.5">{settings.schedule_officer_name}</p>
-                      </div>
-                      <div>
+                    <div className="relative z-10 grid grid-cols-2 gap-4 pt-3 border-t text-[9px]">
+                      <div className="text-right">
                         <p className="font-bold">{settings.department_head_title}</p>
                         <p className="text-slate-600 mt-0.5">{settings.department_head_name}</p>
                       </div>
-                      <div>
+                      <div className="text-left">
                         <p className="font-bold">{settings.vice_dean_title}</p>
                         <p className="text-slate-600 mt-0.5">{settings.vice_dean_name}</p>
                       </div>

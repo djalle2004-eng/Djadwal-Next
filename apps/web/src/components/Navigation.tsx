@@ -12,6 +12,7 @@ import {
   Calendar,
   CalendarDays,
   CalendarClock,
+  CalendarPlus,
   Printer,
   RotateCcw,
   LogOut,
@@ -112,10 +113,16 @@ const navGroups: NavGroup[] = [
     icon: SlidersHorizontal,
     items: [
       {
+        name: 'الحصص الإضافية والتعويضية',
+        href: '/available-rooms?tab=log',
+        icon: CalendarPlus,
+        description: 'جدول الحصص الإضافية والتعويضات المبرمجة وإدارتها وطباعتها',
+      },
+      {
         name: 'القاعات المتاحة',
-        href: '/available-rooms',
+        href: '/available-rooms?tab=search',
         icon: Search,
-        description: 'كشف الشغور اللحظي للحصص الإضافية والتعويضات',
+        description: 'كشف الشغور اللحظي وبرمجة الحصص والاستدراكات',
       },
       {
         name: 'أعباء الأساتذة',

@@ -154,6 +154,7 @@ router.post('/professors/bulk-import', authorize('professors', 'create'), profMo
 // 7. Assignments (Strangler Proxy)
 // ==========================================
 router.get('/assignments', authorize('assignments', 'view'), createStranglerProxy('assignments', assignModule.listAssignments, assignModule.listAssignments));
+router.get('/assignments/conflicts/audit', authorize('assignments', 'view'), assignModule.auditConflictsEndpoint);
 router.get('/assignments/:id', authorize('assignments', 'view'), assignModule.getAssignment);
 router.post('/assignments', authorize('assignments', 'create'), assignModule.createAssignment);
 router.put('/assignments/:id', authorize('assignments', 'update'), assignModule.updateAssignment);

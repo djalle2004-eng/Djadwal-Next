@@ -86,6 +86,7 @@ router.post('/professors/bulk-import', validateBody(schemas.bulkImportProfessors
 router.get('/assignments', assignModule.listAssignments);
 router.post('/assignments', validateBody(schemas.createAssignmentSchema), assignModule.createAssignment);
 router.get('/assignments/coverage-audit', assignModule.getCoverageAudit);
+router.get('/assignments/conflicts/audit', assignModule.auditConflictsEndpoint);
 router.post('/assignments/check-conflicts', validateBody(schemas.checkAssignmentConflictsSchema), assignModule.checkConflictsEndpoint);
 router.post('/assignments/bulk-import/preview', assignModule.previewBulkImport);
 router.post('/assignments/bulk-import', validateBody(schemas.bulkImportAssignmentsSchema), assignModule.bulkImportAssignments);

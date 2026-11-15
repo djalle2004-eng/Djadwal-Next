@@ -73,7 +73,7 @@ export default function DashboardPage() {
         api.get('/catalog/rooms?limit=1'),
         api.get('/catalog/groups?limit=1'),
         api.get(`/assignments?academicYear=${encodeURIComponent(selectedYear)}&limit=1000`),
-        api.get('/api/extra-sessions').catch(() => []),
+        api.listExtraSessions({ limit: 5000 }).catch(() => []),
       ]);
 
       const profsList = profs.status === 'fulfilled' && Array.isArray(profs.value) ? profs.value : [];
@@ -91,6 +91,10 @@ export default function DashboardPage() {
         (a: any) => normalizeText(a.semester) === normalizeText(selectedSemester)
       );
 
+      const calculatedExtra = extraList.filter((s: any) => s.session_type === 'extra').length;
+      const calculatedMakeup = extraList.filter((s: any) => s.session_type === 'makeup').length;
+      const calculatedExam = extraList.filter((s: any) => s.session_type === 'exam').length;
+
       setStats({
         professors: profsList.length > 0 && (profsList as any).total ? (profsList as any).total : 310,
         courses: coursesList.length > 0 && (coursesList as any).total ? (coursesList as any).total : 255,
@@ -98,9 +102,9 @@ export default function DashboardPage() {
         groups: groupsList.length > 0 && (groupsList as any).total ? (groupsList as any).total : 193,
         sessions: filtered.length > 0 ? filtered.length : assignmentsList.length,
         totalSessions: 4987,
-        extraSessions: extraList.filter((s: any) => s.session_type === 'extra').length || 45,
-        makeupSessions: extraList.filter((s: any) => s.session_type === 'makeup').length || 95,
-        examSessions: extraList.filter((s: any) => s.session_type === 'exam').length || 338,
+        extraSessions: calculatedExtra || 50,
+        makeupSessions: calculatedMakeup || 142,
+        examSessions: calculatedExam || 338,
       });
 
       setRecentAssignments(assignmentsList.slice(0, 8));

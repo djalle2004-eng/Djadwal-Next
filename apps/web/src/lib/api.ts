@@ -255,6 +255,11 @@ export const api = {
       `/assignments/coverage-audit?academicYear=${encodeURIComponent(academicYear || '')}&semester=${encodeURIComponent(semester || '')}`
     ),
 
+  auditAssignmentConflicts: (academicYear?: string, semester?: string) =>
+    apiFetch<any>(
+      `/assignments/conflicts/audit?academic_year=${encodeURIComponent(academicYear || '')}&semester=${encodeURIComponent(semester || '')}`
+    ),
+
   // Available Rooms & Extra Sessions Helpers
   getAvailableRooms: (params: {
     date?: string;

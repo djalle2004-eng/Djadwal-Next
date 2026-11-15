@@ -83,7 +83,28 @@ async function getAssignment(req, res) {
 
 async function createAssignment(req, res) {
   try {
-    const { group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, specialization, session_type } = req.body;
+    const { group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, specialization, session_type, ignore_conflicts } = req.body;
+
+    if (!ignore_conflicts) {
+      const check = await findAssignmentConflicts({
+        day_of_week,
+        start_time,
+        end_time,
+        room_id,
+        professor_id,
+        group_id,
+        academic_year,
+        semester
+      });
+      if (check.has_conflicts) {
+        return res.status(409).json({
+          error: 'SCHEDULE_CONFLICT',
+          message: 'يوجد تعارض في التوقيت أو القاعة أو الأستاذ أو الفوج',
+          conflicts: check.conflicts
+        });
+      }
+    }
+
     const created = await assignmentsRepository.create(
       { group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, specialization, session_type },
       { userId: req.user?.id }
@@ -97,7 +118,29 @@ async function createAssignment(req, res) {
 async function updateAssignment(req, res) {
   try {
     const { id } = req.params;
-    const { group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, specialization, session_type, version } = req.body;
+    const { group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, specialization, session_type, version, ignore_conflicts } = req.body;
+
+    if (!ignore_conflicts) {
+      const check = await findAssignmentConflicts({
+        day_of_week,
+        start_time,
+        end_time,
+        room_id,
+        professor_id,
+        group_id,
+        academic_year,
+        semester,
+        exclude_id: id
+      });
+      if (check.has_conflicts) {
+        return res.status(409).json({
+          error: 'SCHEDULE_CONFLICT',
+          message: 'يوجد تعارض في التوقيت أو القاعة أو الأستاذ أو الفوج',
+          conflicts: check.conflicts
+        });
+      }
+    }
+
     const updated = await assignmentsRepository.update(
       id,
       { group_id, course_id, professor_id, room_id, day_of_week, start_time, end_time, academic_year, semester, specialization, session_type },
@@ -168,27 +211,37 @@ async function moveAssignment(req, res) {
   }
 }
 
-async function checkConflictsEndpoint(req, res) {
-  try {
-    const {
-      day_of_week,
-      start_time,
-      end_time,
-      room_id,
-      professor_id,
-      group_id,
-      academic_year,
-      semester,
-      exclude_id
-    } = req.body;
+function timeToMinutes(t) {
+  if (!t) return 0;
+  const parts = t.split(':').map(Number);
+  return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
 
-    const conflicts = [];
-    const day = Number(day_of_week);
+function isTimeOverlap(s1, e1, s2, e2) {
+  return timeToMinutes(s1) < timeToMinutes(e2) && timeToMinutes(e1) > timeToMinutes(s2);
+}
 
-    // 1. Professor conflict
-    if (professor_id) {
+async function findAssignmentConflicts({
+  day_of_week,
+  start_time,
+  end_time,
+  room_id,
+  professor_id,
+  group_id,
+  academic_year,
+  semester,
+  exclude_id
+}) {
+  const conflicts = [];
+  const day = Number(day_of_week);
+
+  // 1. Professor conflict (ignore 'غير معين' and ignore if same physical room = merged session)
+  if (professor_id) {
+    const profs = await executeQuery('SELECT id, name FROM professors WHERE id = $1', [Number(professor_id)]);
+    const profName = profs[0]?.name || '';
+    if (profName && profName !== 'غير معين' && !profName.includes('غير معين')) {
       const profRows = await executeQuery(
-        `SELECT a.id, a.day_of_week, a.start_time, a.end_time,
+        `SELECT a.id, a.day_of_week, a.start_time, a.end_time, a.room_id,
                 p.name as professor_name, c.name as course_name, g.name as group_name, r.name as room_name
          FROM assignments a
          LEFT JOIN professors p ON a.professor_id = p.id
@@ -202,16 +255,24 @@ async function checkConflictsEndpoint(req, res) {
         [Number(professor_id), day, academic_year || '', start_time, end_time, exclude_id ? Number(exclude_id) : null]
       );
       for (const row of profRows) {
+        // If assigned in the exact same room, this is a joint/merged session, not a conflict
+        if (room_id && Number(row.room_id) === Number(room_id)) {
+          continue;
+        }
         conflicts.push({
           type: 'professor',
-          message: `الأستاذ (${row.professor_name || 'غير محدد'}) لديه حصة أخرى في نفس التوقيت: ${row.course_name || ''} مع ${row.group_name || ''} في ${row.room_name || ''} (#${row.id})`,
+          message: `الأستاذ (${row.professor_name || profName}) لديه حصة أخرى في نفس التوقيت: ${row.course_name || ''} مع ${row.group_name || ''} في ${row.room_name || ''} (#${row.id})`,
           assignment: row
         });
       }
     }
+  }
 
-    // 2. Room conflict
-    if (room_id) {
+  // 2. Room conflict (ignore 'عن بعد')
+  if (room_id) {
+    const rms = await executeQuery('SELECT id, name FROM rooms WHERE id = $1', [Number(room_id)]);
+    const roomName = rms[0]?.name || '';
+    if (roomName && roomName !== 'عن بعد' && !roomName.includes('عن بعد')) {
       const roomRows = await executeQuery(
         `SELECT a.id, a.day_of_week, a.start_time, a.end_time,
                 r.name as room_name, c.name as course_name, g.name as group_name, p.name as professor_name
@@ -227,41 +288,189 @@ async function checkConflictsEndpoint(req, res) {
         [Number(room_id), day, academic_year || '', start_time, end_time, exclude_id ? Number(exclude_id) : null]
       );
       for (const row of roomRows) {
+        if (row.room_name && (row.room_name === 'عن بعد' || row.room_name.includes('عن بعد'))) {
+          continue;
+        }
         conflicts.push({
           type: 'room',
-          message: `القاعة (${row.room_name || 'غير محدد'}) محجوزة بحصة أخرى: ${row.course_name || ''} (${row.professor_name || ''}) مع ${row.group_name || ''} (#${row.id})`,
+          message: `القاعة (${row.room_name || roomName}) محجوزة بحصة أخرى: ${row.course_name || ''} (${row.professor_name || ''}) مع ${row.group_name || ''} (#${row.id})`,
           assignment: row
         });
+      }
+    }
+  }
+
+  // 3. Group conflict (hierarchical: direct group, child groups, parent group)
+  if (group_id) {
+    const grps = await executeQuery('SELECT id, name, parent_group_id FROM groups WHERE id = $1', [Number(group_id)]);
+    const parentId = grps[0]?.parent_group_id || null;
+
+    const groupRows = await executeQuery(
+      `SELECT a.id, a.day_of_week, a.start_time, a.end_time, a.group_id,
+              g.name as group_name, c.name as course_name, p.name as professor_name, r.name as room_name
+       FROM assignments a
+       LEFT JOIN groups g ON a.group_id = g.id
+       LEFT JOIN courses c ON a.course_id = c.id
+       LEFT JOIN professors p ON a.professor_id = p.id
+       LEFT JOIN rooms r ON a.room_id = r.id
+       WHERE (a.group_id = $1 OR ($7::int IS NOT NULL AND a.group_id = $7) OR a.group_id IN (SELECT id FROM groups WHERE parent_group_id = $1))
+         AND a.day_of_week = $2
+         AND ($3 = '' OR a.academic_year = $3)
+         AND NOT (a.end_time <= $4 OR a.start_time >= $5)
+         AND ($6::int IS NULL OR a.id != $6)`,
+      [Number(group_id), day, academic_year || '', start_time, end_time, exclude_id ? Number(exclude_id) : null, parentId]
+    );
+    for (const row of groupRows) {
+      conflicts.push({
+        type: 'group',
+        message: `الفوج (${row.group_name || 'المحدد'}) مبرمج لحصة أخرى في نفس التوقيت: ${row.course_name || ''} (${row.professor_name || ''}) في ${row.room_name || ''} (#${row.id})`,
+        assignment: row
+      });
+    }
+  }
+
+  return { conflicts, has_conflicts: conflicts.length > 0 };
+}
+
+async function checkConflictsEndpoint(req, res) {
+  try {
+    const {
+      day_of_week,
+      start_time,
+      end_time,
+      room_id,
+      professor_id,
+      group_id,
+      academic_year,
+      semester,
+      exclude_id
+    } = req.body;
+
+    const result = await findAssignmentConflicts({
+      day_of_week,
+      start_time,
+      end_time,
+      room_id,
+      professor_id,
+      group_id,
+      academic_year,
+      semester,
+      exclude_id
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function auditConflictsEndpoint(req, res) {
+  try {
+    const { academic_year, semester } = req.query;
+    const year = academic_year || '2026-2027';
+    const sem = semester || '';
+
+    const rows = await executeQuery(
+      `SELECT a.id, a.day_of_week, a.start_time, a.end_time, a.academic_year, a.semester,
+              a.professor_id, p.name as professor_name,
+              a.room_id, r.name as room_name,
+              a.group_id, g.name as group_name, g.parent_group_id,
+              a.course_id, c.name as course_name
+       FROM assignments a
+       LEFT JOIN professors p ON a.professor_id = p.id
+       LEFT JOIN rooms r ON a.room_id = r.id
+       LEFT JOIN groups g ON a.group_id = g.id
+       LEFT JOIN courses c ON a.course_id = c.id
+       WHERE a.academic_year = $1
+         AND ($2 = '' OR a.semester = $2)
+       ORDER BY a.day_of_week, a.start_time`,
+      [year, sem]
+    );
+
+    const conflicts = [];
+    const seenPairs = new Set();
+
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        const a1 = rows[i];
+        const a2 = rows[j];
+
+        if (Number(a1.day_of_week) !== Number(a2.day_of_week)) continue;
+        if (!isTimeOverlap(a1.start_time, a1.end_time, a2.start_time, a2.end_time)) continue;
+
+        const pairKey = [a1.id, a2.id].sort((x, y) => x - y).join('-');
+        if (seenPairs.has(pairKey)) continue;
+
+        // 1. Professor conflict
+        if (
+          a1.professor_id &&
+          a2.professor_id &&
+          Number(a1.professor_id) === Number(a2.professor_id) &&
+          a1.professor_name &&
+          a1.professor_name !== 'غير معين' &&
+          !a1.professor_name.includes('غير معين')
+        ) {
+          if (Number(a1.room_id) !== Number(a2.room_id)) {
+            seenPairs.add(pairKey);
+            conflicts.push({
+              type: 'professor',
+              message: `تعارض أستاذ: ${a1.professor_name} مكلف بحصتين في نفس التوقيت (${a1.start_time} - ${a1.end_time}) في قاعتين مختلفتين (${a1.room_name} و ${a2.room_name})`,
+              assignmentA: a1,
+              assignmentB: a2
+            });
+            continue;
+          }
+        }
+
+        // 2. Room conflict
+        if (
+          a1.room_id &&
+          a2.room_id &&
+          Number(a1.room_id) === Number(a2.room_id) &&
+          a1.room_name &&
+          a1.room_name !== 'عن بعد' &&
+          !a1.room_name.includes('عن بعد')
+        ) {
+          seenPairs.add(pairKey);
+          conflicts.push({
+            type: 'room',
+            message: `تعارض قاعة: القاعة ${a1.room_name} محجوزة بحصتين متزامنتين (${a1.course_name} مع ${a1.group_name}) و (${a2.course_name} مع ${a2.group_name})`,
+            assignmentA: a1,
+            assignmentB: a2
+          });
+          continue;
+        }
+
+        // 3. Group conflict
+        const isSameGroup = a1.group_id && a2.group_id && Number(a1.group_id) === Number(a2.group_id);
+        const isParentChild =
+          (a1.group_id && a2.parent_group_id && Number(a1.group_id) === Number(a2.parent_group_id)) ||
+          (a2.group_id && a1.parent_group_id && Number(a2.group_id) === Number(a1.parent_group_id));
+
+        if (isSameGroup || isParentChild) {
+          seenPairs.add(pairKey);
+          conflicts.push({
+            type: 'group',
+            message: `تعارض فوج: ${a1.group_name} مبرمج لحصتين متزامنتين (${a1.course_name} و ${a2.course_name}) في نفس الفترة`,
+            assignmentA: a1,
+            assignmentB: a2
+          });
+          continue;
+        }
       }
     }
 
-    // 3. Group conflict
-    if (group_id) {
-      const groupRows = await executeQuery(
-        `SELECT a.id, a.day_of_week, a.start_time, a.end_time,
-                g.name as group_name, c.name as course_name, p.name as professor_name, r.name as room_name
-         FROM assignments a
-         LEFT JOIN groups g ON a.group_id = g.id
-         LEFT JOIN courses c ON a.course_id = c.id
-         LEFT JOIN professors p ON a.professor_id = p.id
-         LEFT JOIN rooms r ON a.room_id = r.id
-         WHERE a.group_id = $1 AND a.day_of_week = $2
-           AND ($3 = '' OR a.academic_year = $3)
-           AND NOT (a.end_time <= $4 OR a.start_time >= $5)
-           AND ($6::int IS NULL OR a.id != $6)`,
-        [Number(group_id), day, academic_year || '', start_time, end_time, exclude_id ? Number(exclude_id) : null]
-      );
-      for (const row of groupRows) {
-        conflicts.push({
-          type: 'group',
-          message: `الفوج (${row.group_name || 'غير محدد'}) مبرمج لحصة أخرى في نفس التوقيت: ${row.course_name || ''} (${row.professor_name || ''}) في ${row.room_name || ''} (#${row.id})`,
-          assignment: row
-        });
-      }
-    }
+    const byType = {
+      professor: conflicts.filter(c => c.type === 'professor').length,
+      room: conflicts.filter(c => c.type === 'room').length,
+      group: conflicts.filter(c => c.type === 'group').length
+    };
 
     res.json({
-      has_conflicts: conflicts.length > 0,
+      totalConflicts: conflicts.length,
+      byType,
+      academicYear: year,
+      semester: sem,
       conflicts
     });
   } catch (err) {
@@ -708,6 +917,7 @@ module.exports = {
   swapAssignments,
   moveAssignment,
   checkConflictsEndpoint,
+  auditConflictsEndpoint,
   previewBulkImport,
   bulkImportAssignments,
   getCoverageAudit

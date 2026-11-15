@@ -345,21 +345,38 @@ export default function AvailableRoomsPage() {
         setDepartmentHead(savedHead);
         setTempDeptHead(savedHead);
       }
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam && ['search', 'matrix', 'schedule', 'log'].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
     }
   }, []);
+
+  const handleTabChange = (val: string) => {
+    setActiveTab(val);
+    if (typeof window !== 'undefined') {
+      const u = new URL(window.location.href);
+      u.searchParams.set('tab', val);
+      window.history.replaceState({}, '', u.toString());
+    }
+  };
+
+  const [printSettings, setPrintSettings] = useState<any>(null);
 
   // 1. Initial Load of Master Data
   const loadMasterData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [rData, pData, cData, gData, dData, aData, esData] = await Promise.all([
+      const [rData, pData, cData, gData, dData, aData, esData, psData] = await Promise.all([
         api.get<Room[]>('/catalog/rooms?limit=300').catch(() => []),
         api.get<Professor[]>('/professors?limit=300').catch(() => []),
         api.get<Course[]>('/catalog/courses?limit=300').catch(() => []),
         api.get<Group[]>('/catalog/groups?limit=300').catch(() => []),
         api.get<Department[]>('/catalog/departments?limit=100').catch(() => []),
         api.get<Assignment[]>(`/assignments?academicYear=${encodeURIComponent(academicYear)}&semester=${encodeURIComponent(semester)}&limit=3000`).catch(() => []),
-        api.listExtraSessions({ limit: 5000 }).catch(() => [])
+        api.listExtraSessions({ limit: 5000 }).catch(() => []),
+        api.getPrintSettings().catch(() => null)
       ]);
 
       setRooms(Array.isArray(rData) ? rData : []);
@@ -369,6 +386,7 @@ export default function AvailableRoomsPage() {
       setDepartments(Array.isArray(dData) ? dData : []);
       setRegularAssignments(Array.isArray(aData) ? aData : []);
       setExtraSessions(Array.isArray(esData) ? esData : []);
+      setPrintSettings(psData);
     } catch (err) {
       console.error('Error loading master data:', err);
       showNotification('error', 'خطأ في تحميل البيانات الأساسية');
@@ -1184,7 +1202,7 @@ export default function AvailableRoomsPage() {
 
       {/* Main Tabs Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <Tabs defaultValue="search" value={activeTab} onValueChange={setActiveTab}>
+        <Tabs defaultValue="search" value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="mb-6 grid grid-cols-2 sm:grid-cols-4 w-full max-w-3xl">
             <TabTrigger value="search" className="gap-2">
               <Search className="h-4 w-4" />
@@ -2799,62 +2817,193 @@ export default function AvailableRoomsPage() {
               </div>
             </div>
 
-            {/* View 1: Student Announcement Notice */}
+            {/* View 1: Student Announcement Notice (100% Algerian Faculty Official Layout) */}
             {printModalType === 'announcement' && (
-              <div className="space-y-6 py-2">
-                <div className="text-center">
-                  <div className="inline-block px-8 py-2 rounded-xl border-2 border-slate-900 font-bold text-lg bg-slate-50">
-                    إعـــــــــلان للطلبة 📝
+              <div className="relative space-y-6 py-2" dir="rtl">
+                {/* Background Watermark */}
+                {printSettings?.enable_watermark && printSettings?.university_logo_url && (
+                  <div
+                    className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden z-0"
+                    style={{ opacity: printSettings?.watermark_opacity ?? 0.08 }}
+                  >
+                    <img
+                      src={printSettings.university_logo_url}
+                      alt="Watermark"
+                      className="w-[420px] h-[420px] object-contain select-none"
+                    />
                   </div>
-                  <h3 className="mt-2 text-sm font-semibold text-slate-800">
-                    بخصوص برمجة الحصص البيداغوجية التعويضية والإضافية
-                  </h3>
-                </div>
+                )}
 
-                <p className="text-xs leading-relaxed">
-                  يُنهى إلى علم كافة طلبة الكلية المعنيين أنه قد تم اعتماد وبرمجة الحصص البيداغوجية الموضحة في الجدول أدناه، ويرجى من الجميع الالتزام بالحضور بالقاعات والتوقيت المحدد:
-                </p>
+                <div className="relative z-10 space-y-5">
+                  {/* Triple Official Header with Logos */}
+                  <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
+                    {/* Right: Faculty Logo & Info */}
+                    <div className="flex items-center gap-3 max-w-[36%]">
+                      {printSettings?.faculty_logo_url && (
+                        <img
+                          src={printSettings.faculty_logo_url}
+                          alt="Faculty Logo"
+                          className="h-16 w-16 object-contain shrink-0"
+                        />
+                      )}
+                      <div className="text-right text-[11px] leading-tight space-y-0.5">
+                        <p className="font-bold text-slate-900">{printSettings?.faculty_name_ar || 'كلية العلوم الاقتصادية والتجارية وعلوم التسيير'}</p>
+                        <p className="text-slate-700">{printSettings?.deanery_name_ar || 'نيابة العمادة للدراسات والمسائل المرتبطة بالطلبة'}</p>
+                        <p className="text-slate-600 font-medium">قسم: {announcementDepartment ? departments.find(d => d.id === Number(announcementDepartment))?.name : (printSettings?.service_name_ar || 'مصلحة التدريس')}</p>
+                      </div>
+                    </div>
 
-                <table className="w-full text-xs border border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 border-b">
-                      <th className="p-2 border text-start">اليوم والتاريخ</th>
-                      <th className="p-2 border text-center">التوقيت</th>
-                      <th className="p-2 border text-start">المقرر / المقياس</th>
-                      <th className="p-2 border text-start">الأستاذ</th>
-                      <th className="p-2 border text-start">الفوج / الدفعة</th>
-                      <th className="p-2 border text-center">القاعة</th>
-                      <th className="p-2 border text-center">نوع الحصة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {announcementFilteredList.map(s => (
-                      <tr key={s.id} className="border-b">
-                        <td className="p-2 border font-mono">
-                          {SYSTEM_DAYS.find(d => d.id === dateToSystemDay(s.session_date))?.name} ({s.session_date})
-                        </td>
-                        <td className="p-2 border text-center font-mono font-semibold">{s.start_time} - {s.end_time}</td>
-                        <td className="p-2 border font-bold">{s.course_name}</td>
-                        <td className="p-2 border">{s.professor_name}</td>
-                        <td className="p-2 border">{s.group_name || 'الدفعة كاملة'}</td>
-                        <td className="p-2 border text-center font-bold text-emerald-700">{s.room_name}</td>
-                        <td className="p-2 border text-center font-semibold">
-                          {s.session_type === 'exam' ? 'امتحان TD' : s.session_type === 'makeup' ? 'تعويضية' : 'إضافية'}
-                        </td>
+                    {/* Center: Republic & University */}
+                    <div className="text-center space-y-0.5">
+                      <p className="font-bold text-xs text-slate-900">{printSettings?.republic_name_ar || 'الجمهورية الجزائرية الديمقراطية الشعبية'}</p>
+                      <p className="font-bold text-[11px] text-slate-800">{printSettings?.ministry_name_ar || 'وزارة التعليم العالي والبحث العلمي'}</p>
+                      <p className="font-extrabold text-xs text-slate-950 pt-0.5">{printSettings?.university_name_ar || 'جامعة الشهيد حمه لخضر - الوادي'}</p>
+                    </div>
+
+                    {/* Left: University Logo */}
+                    <div className="flex items-center justify-end max-w-[25%]">
+                      {printSettings?.university_logo_url ? (
+                        <img
+                          src={printSettings.university_logo_url}
+                          alt="University Logo"
+                          className="h-16 w-16 object-contain"
+                        />
+                      ) : (
+                        <div className="h-16 w-16 border border-dashed rounded-lg flex items-center justify-center text-[9px] text-slate-400">شعار الجامعة</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Centered Announcement Badge */}
+                  <div className="text-center pt-1">
+                    <div className="inline-block px-10 py-2.5 rounded-xl border-2 border-slate-950 font-black text-lg bg-slate-50 shadow-sm text-slate-950">
+                      إعـــــــــلان للطلبة 📝
+                    </div>
+                    <div className="mt-2 text-xs font-bold text-slate-800">
+                      قسم: {announcementDepartment ? departments.find(d => d.id === Number(announcementDepartment))?.name : 'العلوم الاقتصادية والتجارية وعلوم التسيير'}
+                    </div>
+                  </div>
+
+                  {/* Preface Paragraph */}
+                  <div className="text-xs leading-relaxed text-slate-900 font-medium bg-slate-50/60 p-3 rounded-xl border border-slate-200">
+                    ليكن في علم طلبة قسم <strong>{announcementDepartment ? departments.find(d => d.id === Number(announcementDepartment))?.name : 'الكلية'}</strong>
+                    {announcementSpecialization ? ` تخصص <strong>${specializations.find(sp => sp.id === Number(announcementSpecialization))?.name || ''}</strong>` : ''} أنه تقرر برمجة{' '}
+                    <strong className="text-rose-700">
+                      {announcementSessionType === 'extra'
+                        ? 'حصة إضافية'
+                        : announcementSessionType === 'makeup'
+                        ? 'حصة تعويضية'
+                        : announcementSessionType === 'exam'
+                        ? 'إمتحان الأعمال الموجهة'
+                        : 'حصص تعويضية وإضافية'}
+                    </strong> وذلك حسب الجدول الموالي:
+                  </div>
+
+                  {/* 7-Column Table with 2-line Day & Date */}
+                  <table className="w-full text-xs border-2 border-slate-900 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100 border-b-2 border-slate-900 font-bold text-slate-950">
+                        <th className="p-2 border border-slate-900 text-center">اليوم والتاريخ</th>
+                        <th className="p-2 border border-slate-900 text-center">التوقيت</th>
+                        <th className="p-2 border border-slate-900 text-start">المقرر</th>
+                        <th className="p-2 border border-slate-900 text-start">الأستاذ</th>
+                        <th className="p-2 border border-slate-900 text-start">المجموعة</th>
+                        <th className="p-2 border border-slate-900 text-center">القاعة</th>
+                        <th className="p-2 border border-slate-900 text-center">نوع الحصة</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // Group identical sessions and merge group names
+                        const accMap = new Map<string, any>();
+                        for (const s of announcementFilteredList) {
+                          const key = `${s.session_date}_${s.start_time}_${s.end_time}_${s.room_id}_${s.course_id}_${s.professor_id}_${s.session_type}`;
+                          const existing = accMap.get(key);
+                          if (existing) {
+                            if (s.group_name && !existing.group_names.includes(s.group_name)) {
+                              existing.group_names.push(s.group_name);
+                            }
+                          } else {
+                            accMap.set(key, {
+                              ...s,
+                              key,
+                              group_names: s.group_name ? [s.group_name] : ['الدفعة كاملة']
+                            });
+                          }
+                        }
+                        const grouped = Array.from(accMap.values());
 
-                {/* Official Signatures */}
-                <div className="flex justify-between items-center pt-8 text-xs font-semibold px-6">
-                  <div className="text-center">
-                    <p>مسؤول مصلحة البرمجة والتوقيت</p>
-                    <p className="mt-8 text-slate-400">الختم والتأشيرة</p>
+                        return grouped.map((s: any) => {
+                          const dateParts = (s.session_date || '').split('-');
+                          const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : s.session_date;
+                          const dayName = SYSTEM_DAYS.find(d => d.id === dateToSystemDay(s.session_date))?.name || '';
+
+                          return (
+                            <tr key={s.key} className="border-b border-slate-800 text-center">
+                              <td className="p-2 border border-slate-800 font-semibold leading-tight">
+                                <div>{dayName}</div>
+                                <div className="text-[11px] font-mono text-slate-600 font-bold">{formattedDate}</div>
+                              </td>
+                              <td className="p-2 border border-slate-800 text-center font-mono font-bold">{s.start_time} - {s.end_time}</td>
+                              <td className="p-2 border border-slate-800 font-bold text-start text-slate-950">{s.course_name}</td>
+                              <td className="p-2 border border-slate-800 text-start">{s.professor_name}</td>
+                              <td className="p-2 border border-slate-800 text-start font-medium">{s.group_names.join(' + ')}</td>
+                              <td className="p-2 border border-slate-800 text-center font-black text-emerald-800">{s.room_name}</td>
+                              <td className="p-2 border border-slate-800 text-center font-bold">
+                                {s.session_type === 'exam'
+                                  ? 'إمتحان الأعمال الموجهة'
+                                  : s.session_type === 'makeup'
+                                  ? 'حصة تعويض'
+                                  : 'حصة إضافية'}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+
+                  {/* Mandatory Attendance Alert Box */}
+                  <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl text-amber-950 text-xs">
+                    <p className="font-bold flex items-center gap-1.5 mb-1">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <span>ملاحظة هامة:</span>
+                    </p>
+                    <p className="leading-relaxed">
+                      يعتبر الحضور للحصة المشار إليها <strong>إجباريًا</strong> (بالنسبة للأعمال الموجهة)، ويتحمل الطالب مسؤولية أي غياب يترتب عنه.
+                    </p>
                   </div>
-                  <div className="text-center">
-                    <p>رئيس القسم ({departmentHead})</p>
-                    <p className="mt-8 text-slate-400">التوقيع والختم</p>
+
+                  {/* Secondary Exam Warning Box if exams exist */}
+                  {announcementFilteredList.some(s => s.session_type === 'exam') && (
+                    <div className="p-3 bg-rose-50 border-2 border-rose-300 rounded-xl text-rose-950 text-xs">
+                      <p className="font-bold flex items-center gap-1.5 mb-1">
+                        <AlertCircle className="h-4 w-4 text-rose-600" />
+                        <span>ملاحظة هامة ثانية (الفروض المحروسة):</span>
+                      </p>
+                      <p className="leading-relaxed">
+                        أي <strong>غياب غير مبرر</strong> للإمتحان المشار إليه يعرض الطالب إلى <strong>علامة صفر</strong> في نقطة إمتحان الأعمال الموجهة.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Official Signatures & Date */}
+                  <div className="flex justify-between items-end pt-8 text-xs font-semibold px-6">
+                    <div className="text-start">
+                      <p className="font-bold">التاريخ:</p>
+                      <p className="font-mono mt-1 text-slate-800">{new Date().toLocaleDateString('ar-DZ') || new Date().toISOString().split('T')[0]}</p>
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="font-bold text-xs text-slate-950">
+                        {printSettings?.department_head_title || 'إمضاء رئيس القسم'}
+                      </p>
+                      <p className="text-xs text-slate-800 font-semibold">
+                        {printSettings?.department_head_name || departmentHead || 'رئيس القسم'}
+                      </p>
+                      <div className="h-16 w-44 mt-2 border-t-2 border-slate-900 pt-1 text-[10px] text-slate-400">
+                        التوقيع والختم الرسمي
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

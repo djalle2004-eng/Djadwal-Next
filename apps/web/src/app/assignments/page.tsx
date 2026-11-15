@@ -172,6 +172,25 @@ export default function AssignmentsPage() {
   const [auditData, setAuditData] = useState<any>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
 
+  // Conflict Audit Modal State
+  const [showConflictAuditModal, setShowConflictAuditModal] = useState(false);
+  const [conflictAuditResults, setConflictAuditResults] = useState<any>(null);
+  const [isLoadingConflictAudit, setIsLoadingConflictAudit] = useState(false);
+  const [ignoreConflicts, setIgnoreConflicts] = useState(false);
+
+  const handleOpenConflictAudit = async () => {
+    setShowConflictAuditModal(true);
+    setIsLoadingConflictAudit(true);
+    try {
+      const data = await api.auditAssignmentConflicts(academicYear, semester !== 'all' ? semester : '');
+      setConflictAuditResults(data);
+    } catch (err: any) {
+      console.error('Failed to run conflict audit:', err);
+    } finally {
+      setIsLoadingConflictAudit(false);
+    }
+  };
+
   // Load Reference Data
   const loadReferences = async () => {
     try {
@@ -330,6 +349,7 @@ export default function AssignmentsPage() {
     });
     setConflictError(null);
     setConflictWarnings([]);
+    setIgnoreConflicts(false);
     setShowFormModal(true);
   };
 
@@ -351,6 +371,7 @@ export default function AssignmentsPage() {
     });
     setConflictError(null);
     setConflictWarnings([]);
+    setIgnoreConflicts(false);
     setShowFormModal(true);
   };
 
@@ -385,6 +406,7 @@ export default function AssignmentsPage() {
             academic_year: academicYear,
             semester: semester !== 'all' ? semester : '1',
             version: editingAssignment.version,
+            ignore_conflicts: ignoreConflicts,
           },
           {
             headers: {
@@ -413,6 +435,7 @@ export default function AssignmentsPage() {
               specialization: formData.specialization || undefined,
               academic_year: academicYear,
               semester: semester !== 'all' ? semester : '1',
+              ignore_conflicts: ignoreConflicts,
             },
             {
               headers: {
@@ -426,10 +449,9 @@ export default function AssignmentsPage() {
       setShowFormModal(false);
       await loadAssignments();
     } catch (err: any) {
-      if (err.statusCode === 409 || err.status === 409 || err.code === 'CONFLICT' || err.name === 'OptimisticLockError') {
-        setConflictError(
-          '⚠️ تنبيه تعارض التعديل المتزامن (409 Conflict): تم تحديث هذه الحصة مسبقاً من قِبل مستخدم آخر. يرجى إغلاق النافذة وتحديث الصفحة لتفادي الكتابة فوق التعديلات الأحدث.'
-        );
+      if (err.statusCode === 409 || err.status === 409 || err.code === 'CONFLICT' || err.name === 'OptimisticLockError' || err.code === 'SCHEDULE_CONFLICT') {
+        const msg = err.messageAr || err.message || '⚠️ تنبيه تعارض (409 Conflict): يوجد تعارض في الجدولة أو تم تعديل الحصة مسبقاً.';
+        setConflictError(msg);
       } else {
         alert(err.message || 'حدث خطأ أثناء حفظ التكليف');
       }
@@ -716,6 +738,16 @@ export default function AssignmentsPage() {
             <ArrowRightLeft className="h-3.5 w-3.5" />
             <span>الواجهة الكلاسيكية (Legacy)</span>
           </Link>
+
+          <Button
+            onClick={handleOpenConflictAudit}
+            variant="outline"
+            size="sm"
+            className="gap-1.5 rounded-xl border-rose-300 bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 font-semibold"
+          >
+            <AlertTriangle className="h-4 w-4 text-rose-600" />
+            <span>مدقق التداخلات الشامل (Audit)</span>
+          </Button>
 
           <Button
             onClick={handleOpenCoverageAudit}
@@ -1168,6 +1200,18 @@ export default function AssignmentsPage() {
                   <li key={idx}>{w}</li>
                 ))}
               </ul>
+              <div className="flex items-center gap-2 pt-2 border-t border-rose-300/40">
+                <input
+                  type="checkbox"
+                  id="ignoreConflictsAssign"
+                  checked={ignoreConflicts}
+                  onChange={(e) => setIgnoreConflicts(e.target.checked)}
+                  className="rounded text-rose-600 focus:ring-rose-500"
+                />
+                <label htmlFor="ignoreConflictsAssign" className="text-xs font-semibold cursor-pointer text-rose-800 dark:text-rose-200">
+                  تجاهل التعارضات وحفظ التكليف (فرض الجدولة)
+                </label>
+              </div>
             </div>
           )}
 
@@ -1705,6 +1749,133 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="outline"
                   onClick={() => setShowAuditModal(false)}
+                  className="rounded-xl"
+                >
+                  إغلاق
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Dialog>
+
+      {/* Comprehensive Conflict Audit Dialog */}
+      <Dialog open={showConflictAuditModal} onClose={() => setShowConflictAuditModal(false)} size="xl">
+        <div className="p-6 space-y-4 max-w-3xl w-full bg-card rounded-2xl text-right max-h-[85vh] overflow-y-auto" dir="rtl">
+          <div className="flex items-center justify-between border-b border-border pb-3">
+            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-5 w-5" />
+              <DialogTitle className="text-lg font-bold text-foreground">
+                مدقق التداخلات والتعارضات الشامل (Conflict Audit)
+              </DialogTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs font-mono">
+                {academicYear} | {semester}
+              </Badge>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOpenConflictAudit}
+                disabled={isLoadingConflictAudit}
+                className="gap-1 text-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingConflictAudit ? 'animate-spin' : ''}`} />
+                <span>إعادة الفحص</span>
+              </Button>
+            </div>
+          </div>
+
+          <DialogDescription className="text-xs text-muted-foreground">
+            فحص شامل ومسح فوري لجميع التداخلات الأسبوعية بين الأساتذة، القاعات، والأفواج في هذا السداسي.
+          </DialogDescription>
+
+          {isLoadingConflictAudit ? (
+            <div className="py-12 text-center space-y-3">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto text-purple-600" />
+              <p className="text-xs text-muted-foreground">جاري مسح وتحليل كافة التكليفات في قاعدة البيانات...</p>
+            </div>
+          ) : conflictAuditResults ? (
+            <div className="space-y-4">
+              {/* Conflict Summary Badges */}
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                  <div className="text-[11px] text-muted-foreground">إجمالي التداخلات</div>
+                  <div className="text-xl font-bold font-mono text-foreground">{conflictAuditResults.totalConflicts}</div>
+                </div>
+                <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-xl text-purple-700 dark:text-purple-300">
+                  <div className="text-[11px]">تعارض الأساتذة</div>
+                  <div className="text-xl font-bold font-mono">{conflictAuditResults.byType?.professor || 0}</div>
+                </div>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl text-amber-700 dark:text-amber-300">
+                  <div className="text-[11px]">تعارض القاعات</div>
+                  <div className="text-xl font-bold font-mono">{conflictAuditResults.byType?.room || 0}</div>
+                </div>
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl text-blue-700 dark:text-blue-300">
+                  <div className="text-[11px]">تعارض الأفواج</div>
+                  <div className="text-xl font-bold font-mono">{conflictAuditResults.byType?.group || 0}</div>
+                </div>
+              </div>
+
+              {/* Conflict List */}
+              {conflictAuditResults.totalConflicts === 0 ? (
+                <div className="p-6 text-center bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                  <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-2" />
+                  <h4 className="font-bold text-sm text-emerald-900 dark:text-emerald-100">تهانينا! جدول التوقيت خالٍ تماماً من التعارضات</h4>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
+                    لا يوجد أي تضارب بين الأساتذة أو القاعات أو الأفواج في العام الجامعي {academicYear} ({semester}).
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[50vh] overflow-y-auto">
+                  {conflictAuditResults.conflicts.map((c: any, idx: number) => {
+                    const dayName = DAYS_OF_WEEK.find(d => d.id === Number(c.assignmentA?.day_of_week))?.name || '';
+                    return (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 space-y-2 text-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline" className={`text-[11px] font-bold ${
+                            c.type === 'professor'
+                              ? 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300'
+                              : c.type === 'room'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300'
+                              : 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300'
+                          }`}>
+                            {c.type === 'professor' ? '👤 تعارض أستاذ' : c.type === 'room' ? '🚪 تعارض قاعة' : '👥 تعارض فوج'}
+                          </Badge>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">
+                            {dayName} ({c.assignmentA?.start_time} - {c.assignmentA?.end_time})
+                          </span>
+                        </div>
+
+                        <p className="text-slate-900 dark:text-slate-100 font-semibold">{c.message}</p>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 space-y-0.5">
+                            <div className="font-bold text-[11px] text-purple-700 dark:text-purple-400">الحصة الأولى (#{c.assignmentA?.id})</div>
+                            <div>{c.assignmentA?.course_name}</div>
+                            <div className="text-muted-foreground">{c.assignmentA?.professor_name} | {c.assignmentA?.room_name} | {c.assignmentA?.group_name}</div>
+                          </div>
+
+                          <div className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 space-y-0.5">
+                            <div className="font-bold text-[11px] text-rose-700 dark:text-rose-400">الحصة الثانية (#{c.assignmentB?.id})</div>
+                            <div>{c.assignmentB?.course_name}</div>
+                            <div className="text-muted-foreground">{c.assignmentB?.professor_name} | {c.assignmentB?.room_name} | {c.assignmentB?.group_name}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex justify-end border-t border-border pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowConflictAuditModal(false)}
                   className="rounded-xl"
                 >
                   إغلاق
