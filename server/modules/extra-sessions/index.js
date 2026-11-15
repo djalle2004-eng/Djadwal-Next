@@ -187,7 +187,7 @@ async function listExtraSessions(req, res) {
              p.name as professor_name,
              r.name as room_name,
              r.capacity as room_capacity,
-             r.building as room_building
+             NULL as room_building
       FROM extra_sessions s
       LEFT JOIN groups g ON s.group_id = g.id
       LEFT JOIN courses c ON s.course_id = c.id
@@ -221,7 +221,7 @@ async function getExtraSession(req, res) {
              p.name as professor_name,
              r.name as room_name,
              r.capacity as room_capacity,
-             r.building as room_building
+             NULL as room_building
       FROM extra_sessions s
       LEFT JOIN groups g ON s.group_id = g.id
       LEFT JOIN courses c ON s.course_id = c.id
@@ -472,28 +472,32 @@ async function getAvailableRoomsEndpoint(req, res) {
 
     // 1. Fetch active rooms
     let roomSql = `
-      SELECT id, name, capacity, building, room_type
+      SELECT id, name, capacity
       FROM rooms
-      WHERE (is_deleted = 0 OR is_deleted IS NULL)
+      WHERE (deleted_at IS NULL)
     `;
     const roomParams = [];
     let rIdx = 1;
 
-    if (building && building !== 'all') {
-      roomSql += ` AND building = $${rIdx++}`;
-      roomParams.push(building);
-    }
-    if (room_type && room_type !== 'all') {
-      roomSql += ` AND room_type = $${rIdx++}`;
-      roomParams.push(room_type);
-    }
     if (min_capacity && Number(min_capacity) > 0) {
       roomSql += ` AND capacity >= $${rIdx++}`;
       roomParams.push(Number(min_capacity));
     }
     roomSql += ` ORDER BY name ASC`;
 
-    const rooms = await executeQuery(roomSql, roomParams);
+    const rawRooms = await executeQuery(roomSql, roomParams);
+    let rooms = (rawRooms || []).map(r => ({
+      ...r,
+      building: 'المجمع الرئيسي',
+      room_type: (r.capacity && r.capacity >= 80) || (r.name && (r.name.toLowerCase().includes('amphi') || r.name.includes('مدرج'))) ? 'amphi' : 'td'
+    }));
+
+    if (building && building !== 'all') {
+      rooms = rooms.filter(r => r.building === building);
+    }
+    if (room_type && room_type !== 'all') {
+      rooms = rooms.filter(r => r.room_type === room_type);
+    }
 
     // 2. Fetch regular assignments for systemDay
     let regSql = `
