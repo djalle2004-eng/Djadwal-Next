@@ -966,30 +966,38 @@ export default function GroupSchedulesPage() {
                                 {cellSessions.length === 0 ? (
                                   <span className="text-[9px] text-slate-300 font-mono">-</span>
                                 ) : (
-                                  cellSessions.map((s) => {
-                                    const isLecture = isLectureSession(s);
-                                    return (
-                                      <div
-                                        key={s.id}
-                                        className={`p-1 rounded text-start leading-tight border ${
-                                          isLecture
-                                            ? 'bg-amber-50/90 border-amber-300'
-                                            : 'bg-blue-50/90 border-blue-300'
-                                        }`}
-                                      >
-                                        <div className="font-extrabold text-[8.5px] truncate text-slate-950">
-                                          {s.course_name}
+                                  <div className="flex flex-col gap-1 w-full">
+                                    {cellSessions.map((s) => {
+                                      const isLecture = isLectureSession(s);
+                                      const groupOrLectureBadge = isLecture ? 'محاضرة' : (grp.name || s.group_name || 'فوج');
+                                      return (
+                                        <div
+                                          key={s.id}
+                                          className={`py-[2px] px-1.5 rounded-[3px] text-start border transition-all ${
+                                            isLecture
+                                              ? 'bg-[#e8f4fd] border-[#b8daff]'
+                                              : 'bg-[#f8fafc] border-[#cbd5e1]'
+                                          }`}
+                                        >
+                                          {/* Line 1: Course + (Group / Lecture) */}
+                                          <div className="font-bold text-[7.5pt] sm:text-[8pt] text-slate-950 leading-tight break-words" dir="rtl">
+                                            <span>{s.course_name}</span>{' '}
+                                            <span className={isLecture ? 'font-extrabold text-blue-900' : 'font-extrabold text-slate-800'}>
+                                              ({groupOrLectureBadge}&rlm;)
+                                            </span>
+                                          </div>
+
+                                          {/* Line 2: Professor + (Room) */}
+                                          <div className="font-normal text-[7pt] sm:text-[7.5pt] text-slate-700 leading-tight break-words pt-0.5" dir="rtl">
+                                            <span>{s.professor_name || 'أستاذ'}</span>{' '}
+                                            <span className="text-slate-600 font-medium">
+                                              ({s.room_name || 'قاعة'}&rlm;)
+                                            </span>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center justify-between text-[7.5px] text-slate-700 font-medium mt-0.5">
-                                          <span className="truncate">{s.professor_name}</span>
-                                          <span className="font-bold">{s.room_name || 'قاعة'}</span>
-                                        </div>
-                                        <div className="text-[7px] font-bold text-blue-900 mt-0.5">
-                                          {isLecture ? 'محاضرة' : 'أعمال موجهة (أ.م)'}
-                                        </div>
-                                      </div>
-                                    );
-                                  })
+                                      );
+                                    })}
+                                  </div>
                                 )}
                               </td>
                             );

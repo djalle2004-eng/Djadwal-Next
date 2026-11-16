@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   Users,
   BookOpen,
@@ -263,7 +264,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Extra Sessions */}
-        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+        <Link href="/available-rooms?tab=log" className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm hover:border-cyan-300 hover:shadow-md transition-all cursor-pointer block">
           <div className="flex items-center justify-between text-gray-500">
             <span className="text-sm font-medium">الحصص الإضافية (Extra)</span>
             <CalendarPlus className="h-5 w-5 text-cyan-600" />
@@ -272,10 +273,10 @@ export default function DashboardPage() {
             <span className="text-3xl font-extrabold text-gray-900">{stats.extraSessions}</span>
             <span className="text-xs text-gray-400">حصة تعويضية</span>
           </div>
-        </div>
+        </Link>
 
         {/* Makeup Sessions */}
-        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+        <Link href="/available-rooms?tab=log" className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm hover:border-orange-300 hover:shadow-md transition-all cursor-pointer block">
           <div className="flex items-center justify-between text-gray-500">
             <span className="text-sm font-medium">حصص الاستدراك (Makeup)</span>
             <Clock className="h-5 w-5 text-orange-600" />
@@ -284,10 +285,10 @@ export default function DashboardPage() {
             <span className="text-3xl font-extrabold text-gray-900">{stats.makeupSessions}</span>
             <span className="text-xs text-gray-400">حصة مبرمجة</span>
           </div>
-        </div>
+        </Link>
 
         {/* Exam Sessions */}
-        <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+        <Link href="/available-rooms?tab=log" className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm hover:border-rose-300 hover:shadow-md transition-all cursor-pointer block">
           <div className="flex items-center justify-between text-gray-500">
             <span className="text-sm font-medium">امتحانات المداومة (Exams)</span>
             <FileCheck className="h-5 w-5 text-rose-600" />
@@ -296,7 +297,7 @@ export default function DashboardPage() {
             <span className="text-3xl font-extrabold text-gray-900">{stats.examSessions}</span>
             <span className="text-xs text-gray-400">جلسة امتحان</span>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Recent Assignments Table */}

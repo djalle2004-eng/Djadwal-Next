@@ -209,62 +209,55 @@ export default function SchedulePage() {
     return false;
   };
 
-  // Helper to resolve detailed session metadata for display & print
-  const resolveSessionDetails = (a: Assignment) => {
+  // Helper to format session in strict 2-line full-width print card
+  const format2LineSession = (a: Assignment) => {
+    const isLecture = isLectureSession(a);
     const g = groups.find((item) => item.id === a.group_id);
     const r = rooms.find((item) => item.id === a.room_id);
     const groupName = (a.group_name || g?.name || '').trim();
     const roomName = (a.room_name || r?.name || 'قاعة').trim();
-    const roomLower = roomName.toLowerCase();
-    const sessionTypeRaw = (a.session_type || '').toLowerCase();
+    const courseName = (a.course_name || 'مقياس').trim();
+    const professorName = (a.professor_name || 'أستاذ').trim();
 
-    const isAmphi = roomLower.includes('مدرج') || roomLower.includes('amphi') || roomLower.includes('محاضرات');
-    const isLab = roomLower.includes('مخبر') || roomLower.includes('معمل') || roomLower.includes('lab') || sessionTypeRaw === 'tp' || groupName.toLowerCase().includes('tp');
-    const isSubgroup = /(فوج|ف\s*\.?\s*\d+|group|grp|g\d+)/i.test(groupName) &&
-      !groupName.includes('كافة الأفواج') &&
-      !groupName.includes('جميع الأفواج');
-
-    let isLecture = false;
-    let typeLabel = 'أعمال موجهة (أ.م)';
-
-    if (isLab) {
-      typeLabel = 'أعمال تطبيقية (أ.ت)';
-      isLecture = false;
-    } else if (isSubgroup) {
-      typeLabel = 'أعمال موجهة (أ.م)';
-      isLecture = false;
-    } else if (isAmphi || groupName.includes('محاضرة') || groupName.includes('الدفعة') || groupName.includes('ج.م') || (g && (g.group_type === 'lecture_group' || g.group_type === 'section'))) {
-      typeLabel = 'محاضرة';
-      isLecture = true;
-    } else if (sessionTypeRaw === 'td') {
-      typeLabel = 'أعمال موجهة (أ.م)';
-      isLecture = false;
-    } else if (sessionTypeRaw === 'cours' || sessionTypeRaw === 'lecture') {
-      typeLabel = isAmphi ? 'محاضرة' : 'أعمال موجهة (أ.م)';
-      isLecture = isAmphi;
-    }
-
-    // Extract prominent group badge (e.g. "فوج 1", "فوج 2", "ف 01")
-    let displayGroupBadge = '';
-    const matchFawj = groupName.match(/(فوج\s*\d+|ف\s*\.?\s*\d+|G\d+)/i);
-    if (matchFawj) {
-      displayGroupBadge = matchFawj[0];
-    } else if (isLecture) {
-      displayGroupBadge = 'محاضرة';
-    } else if (groupName) {
-      displayGroupBadge = groupName.length > 15 ? groupName.substring(0, 15) : groupName;
-    } else {
-      displayGroupBadge = typeLabel;
+    // Group badge or Lecture badge
+    let groupOrLectureBadge = 'محاضرة';
+    if (!isLecture) {
+      const matchFawj = groupName.match(/(الفوج\s*\d+|فوج\s*\d+|ف\s*\.?\s*\d+|G\d+)/i);
+      if (matchFawj) {
+        const numMatch = matchFawj[0].match(/\d+/);
+        groupOrLectureBadge = numMatch ? `الفوج ${parseInt(numMatch[0], 10)}` : matchFawj[0];
+      } else if (groupName) {
+        groupOrLectureBadge = groupName;
+      } else {
+        groupOrLectureBadge = 'فوج';
+      }
     }
 
     return {
       isLecture,
-      typeLabel,
-      displayGroupBadge,
+      courseName,
+      groupOrLectureBadge,
+      professorName,
       roomName,
-      professorName: a.professor_name || 'أستاذ',
-      courseName: a.course_name || 'مقياس',
     };
+  };
+
+  // Sort sessions: Lecture first, then groups ascending by group number
+  const sortCellSessions = (sessions: Assignment[]) => {
+    return [...sessions].sort((a, b) => {
+      const isLecA = isLectureSession(a);
+      const isLecB = isLectureSession(b);
+      // 1. Lecture first
+      if (isLecA && !isLecB) return -1;
+      if (!isLecA && isLecB) return 1;
+
+      // 2. Ascending group numbers
+      const numA = (a.group_name?.match(/\d+/) ? parseInt(a.group_name.match(/\d+/)![0], 10) : 999);
+      const numB = (b.group_name?.match(/\d+/) ? parseInt(b.group_name.match(/\d+/)![0], 10) : 999);
+      if (numA !== numB) return numA - numB;
+
+      return (a.group_name || '').localeCompare(b.group_name || '', 'ar');
+    });
   };
 
   // Helper to check if an assignment belongs to a specialization
@@ -1197,53 +1190,31 @@ export default function SchedulePage() {
                               {cellSessions.length === 0 ? (
                                 <span className="text-[9px] text-slate-300 font-mono">-</span>
                               ) : (
-                                <div
-                                  className={
-                                    cellSessions.length > 1
-                                      ? 'grid grid-cols-2 gap-1 w-full'
-                                      : 'w-full'
-                                  }
-                                >
-                                  {cellSessions.map((s, idx) => {
-                                    const details = resolveSessionDetails(s);
+                                <div className="flex flex-col gap-1 w-full">
+                                  {sortCellSessions(cellSessions).map((s, idx) => {
+                                    const details = format2LineSession(s);
                                     return (
                                       <div
                                         key={`${s.id}-${idx}`}
-                                        className={`p-1 rounded text-start leading-tight border transition-all ${
+                                        className={`py-[2px] px-1.5 rounded-[3px] text-start border transition-all ${
                                           details.isLecture
-                                            ? 'bg-amber-50/90 border-amber-300'
-                                            : 'bg-blue-50/90 border-blue-300'
+                                            ? 'bg-[#e8f4fd] border-[#b8daff]'
+                                            : 'bg-[#f8fafc] border-[#cbd5e1]'
                                         }`}
                                       >
-                                        {/* Top row: Group Badge + Room */}
-                                        <div className="flex items-center justify-between text-[8px] font-bold pb-0.5">
-                                          <span
-                                            className={`px-1 py-0.2 rounded text-[7.5px] font-black shrink-0 ${
-                                              details.isLecture
-                                                ? 'bg-amber-600 text-white'
-                                                : 'bg-blue-700 text-white'
-                                            }`}
-                                          >
-                                            {details.displayGroupBadge}
-                                          </span>
-                                          <span className="text-slate-700 font-bold text-[7.5px] truncate mr-1">
-                                            {details.roomName}
+                                        {/* Line 1: Course + (Group / Lecture) */}
+                                        <div className="font-bold text-[7.5pt] sm:text-[8pt] text-slate-950 leading-tight break-words" dir="rtl">
+                                          <span>{details.courseName}</span>{' '}
+                                          <span className={details.isLecture ? 'font-extrabold text-blue-900' : 'font-extrabold text-slate-800'}>
+                                            ({details.groupOrLectureBadge}&rlm;)
                                           </span>
                                         </div>
 
-                                        {/* Course Name */}
-                                        <div
-                                          className="font-extrabold text-[8.5px] truncate text-slate-950 my-0.5"
-                                          title={details.courseName}
-                                        >
-                                          {details.courseName}
-                                        </div>
-
-                                        {/* Professor + Type Label */}
-                                        <div className="flex items-center justify-between text-[7.5px] text-slate-700 font-medium pt-0.5 border-t border-slate-200/60">
-                                          <span className="truncate max-w-[65%]">{details.professorName}</span>
-                                          <span className="text-[7px] text-slate-500 font-semibold shrink-0">
-                                            {details.typeLabel}
+                                        {/* Line 2: Professor + (Room) */}
+                                        <div className="font-normal text-[7pt] sm:text-[7.5pt] text-slate-700 leading-tight break-words pt-0.5" dir="rtl">
+                                          <span>{details.professorName}</span>{' '}
+                                          <span className="text-slate-600 font-medium">
+                                            ({details.roomName}&rlm;)
                                           </span>
                                         </div>
                                       </div>
