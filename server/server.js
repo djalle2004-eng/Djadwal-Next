@@ -34,7 +34,7 @@ const {
 // Configuration du serveur
 const app = express();
 app.set('trust proxy', 1);
-const port = process.env.PORT || 3001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 10000;
 const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
 });
@@ -358,8 +358,8 @@ app.use(securityErrorHandler);
 
 // Démarrage du serveur
 if (require.main === module) {
-  app.listen(port, () => {
-    console.log(`Serveur de génération de PDF démarré sur le port ${port}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Djadwal Server] Listening on 0.0.0.0:${PORT}`);
   });
 }
 
