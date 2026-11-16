@@ -316,16 +316,16 @@ const staticOptions = {
   }
 };
 
-// 1. Serve built Vite dist assets
-app.use(express.static(distPath, staticOptions));
-
-// 2. Serve Next.js public & static assets if present
-if (fs.existsSync(webPublicPath)) {
-  app.use(express.static(webPublicPath, staticOptions));
-}
+// 1. Serve Next.js public & static assets if present
 if (fs.existsSync(webNextStaticPath)) {
   app.use('/_next/static', express.static(webNextStaticPath, staticOptions));
 }
+if (fs.existsSync(webPublicPath)) {
+  app.use(express.static(webPublicPath, { ...staticOptions, index: false }));
+}
+
+// 2. Serve built Vite dist assets (strictly without serving index.html on root '/')
+app.use(express.static(distPath, { ...staticOptions, index: false }));
 
 // 3. Strict 404 Guard for assets (prevents missing JS/CSS/images from falling through to index.html)
 app.use((req, res, next) => {
@@ -344,12 +344,25 @@ app.use((req, res, next) => {
   next();
 });
 
-// P9 Strangler UI Routing Middleware
-const { stranglerUiMiddleware } = require('./modules/proxy');
-app.use(stranglerUiMiddleware);
+// P9 Strangler UI & Next.js App Router Routing
+const { handle, isRouteMigrated } = require('./modules/proxy');
 
-// Anything that doesn't match the above, send back index.html
-app.get(/.*/, (req, res) => {
+// 4. Explicit Legacy UI Routes (/legacy and /legacy/*)
+app.all(/^\/legacy(?:\/.*)?$/, (req, res) => {
+  const subpath = req.path.replace(/^\/legacy/, '');
+  const candidateFile = path.join(distPath, subpath);
+  if (subpath && fs.existsSync(candidateFile) && fs.statSync(candidateFile).isFile()) {
+    return res.sendFile(candidateFile);
+  }
+  return res.sendFile(path.join(distPath, 'index.html'));
+});
+
+// 5. Catch-all Next.js App Router Handler for all Migrated Routes
+app.all(/.*/, (req, res) => {
+  if (isRouteMigrated(req.path)) {
+    return handle(req, res);
+  }
+  // Fallback to legacy UI if route is not migrated (e.g. emergency rollback MIGRATED_ROUTES="")
   res.sendFile(path.join(distPath, 'index.html'));
 });
 

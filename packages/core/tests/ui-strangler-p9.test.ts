@@ -77,7 +77,11 @@ describe('P9 Strangler UI & Next.js App Router Verification Suite', () => {
       expect(res.status).toBe(200);
       expect(res.text).toContain('<!doctype html>');
     } finally {
-      process.env.MIGRATED_ROUTES = originalRoutes;
+      if (originalRoutes === undefined) {
+        delete process.env.MIGRATED_ROUTES;
+      } else {
+        process.env.MIGRATED_ROUTES = originalRoutes;
+      }
     }
   });
 
@@ -98,6 +102,57 @@ describe('P9 Strangler UI & Next.js App Router Verification Suite', () => {
       .set('Cookie', 'token=valid_test_token; __Host-token=valid_test_token');
 
     expect(res.status).toBe(200);
+  });
+
+  it('8. Evaluates isRouteMigrated correctly for root ("/") and migrated catalog routes', () => {
+    const { isRouteMigrated } = require('../../../server/modules/proxy');
+    const originalRoutes = process.env.MIGRATED_ROUTES;
+
+    try {
+      // Default / Wildcard '*'
+      process.env.MIGRATED_ROUTES = '*';
+      expect(isRouteMigrated('/')).toBe(true);
+      expect(isRouteMigrated('/dashboard')).toBe(true);
+      expect(isRouteMigrated('/professors')).toBe(true);
+      expect(isRouteMigrated('/legacy')).toBe(false);
+      expect(isRouteMigrated('/legacy/professors')).toBe(false);
+
+      // Comma-separated list containing /dashboard
+      process.env.MIGRATED_ROUTES = '/dashboard,/professors,/rooms';
+      expect(isRouteMigrated('/')).toBe(true); // Root maps to modern dashboard
+      expect(isRouteMigrated('/dashboard')).toBe(true);
+      expect(isRouteMigrated('/professors')).toBe(true);
+      expect(isRouteMigrated('/courses')).toBe(false);
+
+      // Emergency rollback
+      process.env.MIGRATED_ROUTES = '';
+      expect(isRouteMigrated('/')).toBe(false);
+      expect(isRouteMigrated('/dashboard')).toBe(false);
+
+      process.env.MIGRATED_ROUTES = 'none';
+      expect(isRouteMigrated('/')).toBe(false);
+    } finally {
+      if (originalRoutes === undefined) {
+        delete process.env.MIGRATED_ROUTES;
+      } else {
+        process.env.MIGRATED_ROUTES = originalRoutes;
+      }
+    }
+  });
+
+  it('9. Routes root ("/") to Next.js handler rather than being swallowed by static index.html', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(200);
+    // Verifies that request went through Next.js handler (direct Next.js App Router or reverse proxy)
+    const isServedByNext = res.headers['x-powered-by'] === 'Next.js' || res.headers['x-strangler-fallback'] === 'true';
+    expect(isServedByNext).toBe(true);
+  });
+
+  it('10. Exports handle and isRouteMigrated from proxy module', () => {
+    const proxy = require('../../../server/modules/proxy');
+    expect(typeof proxy.handle).toBe('function');
+    expect(typeof proxy.isRouteMigrated).toBe('function');
+    expect(typeof proxy.forwardToNext).toBe('function');
   });
 });
 
