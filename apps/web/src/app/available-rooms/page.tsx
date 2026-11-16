@@ -2267,14 +2267,14 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
                             </td>
                             <td className="py-3.5 px-4 text-center">
                               <div className="flex items-center justify-center gap-2">
-                                {/* Print Individual Certificate */}
+                                {/* Edit */}
                                 <button
                                   type="button"
-                                  onClick={() => handlePrintCertificate(session)}
+                                  onClick={() => openEditModal(session)}
                                   className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
-                                  title="طباعة شهادة الحصة الفردية للأستاذ"
+                                  title="تعديل الحصة"
                                 >
-                                  <Printer className="h-4 w-4" />
+                                  <Pencil className="h-4 w-4" />
                                 </button>
 
                                 {/* Delete */}
@@ -2290,14 +2290,14 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
                                   <Trash2 className="h-4 w-4" />
                                 </button>
 
-                                {/* Edit */}
+                                {/* Print Individual Certificate */}
                                 <button
                                   type="button"
-                                  onClick={() => openEditModal(session)}
+                                  onClick={() => handlePrintCertificate(session)}
                                   className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
-                                  title="تعديل الحصة"
+                                  title="طباعة شهادة الحصة الفردية للأستاذ"
                                 >
-                                  <Pencil className="h-4 w-4" />
+                                  <Printer className="h-4 w-4" />
                                 </button>
                               </div>
                             </td>
