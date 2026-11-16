@@ -23,7 +23,7 @@
     "dev:web": "concurrently -k \"node server/server.js\" \"npm --prefix apps/web run dev\"",
     "dev:all": "concurrently -k \"node server/server.js\" \"npm --prefix apps/web run dev\"",
     "dev:full": "concurrently -k \"vite\" \"node server/server.js\" \"npm --prefix apps/web run dev\"",
-    "prepare": "husky",
+    "prepare": "",
     "db:migrate:status": "ts-node scripts/migrate.ts status",
     "db:migrate:plan": "ts-node scripts/migrate.ts plan",
     "db:migrate:dry-run": "ts-node scripts/migrate.ts dry-run",
