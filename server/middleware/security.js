@@ -26,6 +26,8 @@ function getAllowedOrigins() {
     : [];
 
   const defaults = [
+    'https://djadwal-next.onrender.com',
+    'https://djadwal.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
@@ -37,12 +39,15 @@ function getAllowedOrigins() {
     'http://127.0.0.1:5173',
     'http://127.0.0.1:4173',
     'http://127.0.0.1:5000',
-    'http://127.0.0.1:5050',
-    'https://djadwal.onrender.com'
+    'http://127.0.0.1:5050'
   ];
 
   if (process.env.CORS_ORIGIN) {
     defaults.push(process.env.CORS_ORIGIN.trim());
+  }
+
+  if (process.env.RENDER_EXTERNAL_URL) {
+    defaults.push(process.env.RENDER_EXTERNAL_URL.trim());
   }
 
   return Array.from(new Set([...defaults, ...envOrigins])).filter(Boolean);
@@ -52,8 +57,13 @@ const allowedOriginsList = getAllowedOrigins();
 
 const corsMiddleware = cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Electron file://)
+    // 1. Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Electron file://, same-origin scripts)
     if (!origin || origin === 'null') return callback(null, true);
+
+    // 2. Allow all origins in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
 
     const allowed = getAllowedOrigins();
     if (allowed.includes(origin)) {
@@ -62,6 +72,12 @@ const corsMiddleware = cors({
 
     try {
       const u = new URL(origin);
+      // 3. Allow any onrender.com origin (djadwal-next, djadwal, preview branches)
+      if (u.hostname.endsWith('.onrender.com') || u.hostname === 'onrender.com') {
+        return callback(null, true);
+      }
+
+      // 4. Allow localhost and local network
       if (
         u.hostname === 'localhost' ||
         u.hostname === '127.0.0.1' ||
@@ -93,7 +109,9 @@ const corsMiddleware = cors({
     'api-version',
     'X-Requested-With',
     'traceparent',
-    'Accept'
+    'Accept',
+    'Accept-Language',
+    'Origin'
   ]
 });
 
@@ -103,17 +121,18 @@ const helmetMiddleware = helmet({
   contentSecurityPolicy: {
     reportOnly: true,
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      defaultSrc: ["'self'", "https://*.onrender.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.onrender.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.onrender.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
-      connectSrc: ["'self'", "https://generativelanguage.googleapis.com", "https://openrouter.ai"],
+      connectSrc: ["'self'", "https://*.onrender.com", "https://generativelanguage.googleapis.com", "https://openrouter.ai"],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: isProduction ? [] : null
     }
   },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginEmbedderPolicy: false, // Prevent breaking PDF embeds
   frameguard: { action: 'deny' },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
@@ -223,6 +242,13 @@ function securityErrorHandler(err, req, res, next) {
   }
 
   if (err.message && err.message.startsWith('CORS_NOT_ALLOWED')) {
+    const p = (req.path || '').toLowerCase();
+    if (/\.(js|mjs|css|map|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webp)$/i.test(p)) {
+      if (p.endsWith('.css')) res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+      else if (p.endsWith('.js') || p.endsWith('.mjs')) res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+      else res.setHeader('Content-Type', 'text/plain');
+      return res.status(403).send('CORS_FORBIDDEN');
+    }
     return res.status(403).json({
       error: 'CORS_FORBIDDEN',
       message: 'الأصل البرمجي الذي أرسل الطلب غير مصرح له بالوصول إلى هذا الخادم.'

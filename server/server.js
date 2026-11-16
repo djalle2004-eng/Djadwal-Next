@@ -55,7 +55,7 @@ if (isHardeningEnabled) {
   app.use('/api/generate-pdf', sensitiveLimiter);
   app.use(csrfProtectionMiddleware);
 } else {
-  app.use(cors());
+  app.use(corsMiddleware);
 }
 
 // 3. Lowered Request Body Limits (256KB)
@@ -298,8 +298,51 @@ app.get('/api/status', (req, res) => {
   res.json({ status: 'Le serveur de génération de PDF est en ligne' });
 });
 
-// Serve static files from the React frontend app
-app.use(express.static(path.join(__dirname, '../dist')));
+// Serve static files with explicit MIME types, CORS, and cache headers
+const distPath = path.join(__dirname, '../dist');
+const webPublicPath = path.join(__dirname, '../apps/web/public');
+const webNextStaticPath = path.join(__dirname, '../apps/web/.next/static');
+
+const staticOptions = {
+  maxAge: '1d',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+    } else if (filePath.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+    }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+};
+
+// 1. Serve built Vite dist assets
+app.use(express.static(distPath, staticOptions));
+
+// 2. Serve Next.js public & static assets if present
+if (fs.existsSync(webPublicPath)) {
+  app.use(express.static(webPublicPath, staticOptions));
+}
+if (fs.existsSync(webNextStaticPath)) {
+  app.use('/_next/static', express.static(webNextStaticPath, staticOptions));
+}
+
+// 3. Strict 404 Guard for assets (prevents missing JS/CSS/images from falling through to index.html)
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase();
+  const isAsset = p.startsWith('/assets/') || 
+                  p.startsWith('/_next/') || 
+                  /\.(js|mjs|css|map|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webp)$/i.test(p);
+  if (isAsset) {
+    if (p.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+    } else if (p.endsWith('.js') || p.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+    }
+    return res.status(404).send('Asset not found');
+  }
+  next();
+});
 
 // P9 Strangler UI Routing Middleware
 const { stranglerUiMiddleware } = require('./modules/proxy');
@@ -307,7 +350,7 @@ app.use(stranglerUiMiddleware);
 
 // Anything that doesn't match the above, send back index.html
 app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Error handling
