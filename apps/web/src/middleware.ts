@@ -34,25 +34,19 @@ export function middleware(request: NextRequest) {
   }
 
   // 3. Evaluate MIGRATED_ROUTES feature flag
-  // Format: comma-separated paths, e.g. "/dashboard,/professors,/rooms,/courses,/groups,/schedule,/sessions,/print"
-  // Default to full set if not configured, or empty string "" for emergency rollback.
+  // Format: comma-separated paths or '*' for all modern routes.
   const rawMigrated = process.env.MIGRATED_ROUTES !== undefined
     ? process.env.MIGRATED_ROUTES
-    : '/dashboard,/professors,/rooms,/courses,/groups,/schedule,/schedules,/sessions,/print,/login,/settings,/assignments,/available-rooms,/professor-workload';
-
-  const migratedRoutes = rawMigrated
-    .split(',')
-    .map((r) => r.trim().toLowerCase())
-    .filter(Boolean);
+    : '*';
 
   const cleanPath = pathname.toLowerCase();
-
-  // Root path '/' aliases to '/dashboard'
   const targetRoute = cleanPath === '/' ? '/dashboard' : cleanPath;
 
-  const isMigrated = migratedRoutes.some((route) => {
-    return targetRoute === route || targetRoute.startsWith(`${route}/`);
-  });
+  const isMigrated = rawMigrated.trim() === '*' || rawMigrated
+    .split(',')
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean)
+    .some((route) => targetRoute === route || targetRoute.startsWith(`${route}/`));
 
   // 4. If route is migrated, serve via Next.js
   if (isMigrated) {

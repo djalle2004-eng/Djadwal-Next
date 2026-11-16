@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Calendar,
   Clock,
@@ -223,8 +224,16 @@ export interface EvaluatedRoom {
 // MAIN COMPONENT
 // =============================================================================
 
-export default function AvailableRoomsPage() {
-  const [activeTab, setActiveTab] = useState<string>('search');
+export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: string }) {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams ? searchParams.get('tab') : null;
+  const [activeTab, setActiveTab] = useState<string>(tabParam || initialTab);
+
+  useEffect(() => {
+    if (tabParam && ['search', 'matrix', 'schedule', 'log'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // Core Data Lists
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -344,11 +353,6 @@ export default function AvailableRoomsPage() {
       if (savedHead) {
         setDepartmentHead(savedHead);
         setTempDeptHead(savedHead);
-      }
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (tabParam && ['search', 'matrix', 'schedule', 'log'].includes(tabParam)) {
-        setActiveTab(tabParam);
       }
     }
   }, []);
@@ -723,8 +727,12 @@ export default function AvailableRoomsPage() {
   // ===========================================================================
   // GROUPED SESSIONS FOR LOG TAB
   // ===========================================================================
-  const upcomingCount = useMemo(() => extraSessions.filter(s => !s.is_archived || s.is_archived === 0).length, [extraSessions]);
-  const archivedCount = useMemo(() => extraSessions.filter(s => s.is_archived === 1).length, [extraSessions]);
+  const isSessionArchived = (s: ExtraSession) => {
+    return Number(s.is_archived) === 1;
+  };
+
+  const upcomingCount = useMemo(() => extraSessions.filter(s => !isSessionArchived(s)).length, [extraSessions]);
+  const archivedCount = useMemo(() => extraSessions.filter(s => isSessionArchived(s)).length, [extraSessions]);
 
   const getFormattedSessionDate = useCallback((sessionDate: string) => {
     if (!sessionDate) return '';
@@ -738,9 +746,10 @@ export default function AvailableRoomsPage() {
 
   const groupedExtraSessions = useMemo<GroupedExtraSession[]>(() => {
     const list = extraSessions.filter(s => {
+      const archived = isSessionArchived(s);
       // Archive filter
-      if (!showArchived && s.is_archived === 1) return false;
-      if (showArchived && (!s.is_archived || s.is_archived === 0)) return false;
+      if (!showArchived && archived) return false;
+      if (showArchived && !archived) return false;
       // Type filter
       if (logTypeFilter !== 'all' && s.session_type !== logTypeFilter) return false;
       // Search filter
@@ -3142,5 +3151,22 @@ export default function AvailableRoomsPage() {
         </div>
       </Dialog>
     </div>
+  );
+}
+
+export default function AvailableRoomsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[50vh] flex items-center justify-center p-8">
+          <div className="flex flex-col items-center gap-3 text-slate-500 font-semibold text-sm">
+            <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+            <span>جاري تحميل كشف الشغور والحصص...</span>
+          </div>
+        </div>
+      }
+    >
+      <AvailableRoomsContent initialTab="search" />
+    </Suspense>
   );
 }

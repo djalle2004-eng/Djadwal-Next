@@ -82,27 +82,23 @@ function stranglerUiMiddleware(req, res, next) {
   }
 
   // 4. Feature Flag: MIGRATED_ROUTES
-  // To preserve 100% feature parity (Available Rooms, Professor Workload, Drag & Drop Swap/Move),
-  // default to Legacy UI ('') unless explicitly configured by the user via environment variable.
+  // Default to modern Next.js App Router for all routes ('*') except explicit /legacy
   const rawMigrated = process.env.MIGRATED_ROUTES !== undefined
     ? process.env.MIGRATED_ROUTES
-    : ''; // Default to rock-solid legacy UI to guarantee zero missing features
+    : '*';
 
   if (!rawMigrated || rawMigrated.trim() === '' || rawMigrated.trim().toLowerCase() === 'none') {
     // Fallback completely to legacy dist
     return res.sendFile(path.join(LEGACY_DIST, 'index.html'));
   }
 
-  const migratedRoutes = rawMigrated
-    .split(',')
-    .map((r) => r.trim().toLowerCase())
-    .filter(Boolean);
-
   const targetRoute = p === '/' ? '/dashboard' : p;
 
-  const isMigrated = migratedRoutes.some((route) => {
-    return targetRoute === route || targetRoute.startsWith(`${route}/`);
-  });
+  const isMigrated = rawMigrated.trim() === '*' || rawMigrated
+    .split(',')
+    .map((r) => r.trim().toLowerCase())
+    .filter(Boolean)
+    .some((route) => targetRoute === route || targetRoute.startsWith(`${route}/`));
 
   if (isMigrated) {
     return forwardToNext(req, res, NEXT_APP_URL);
