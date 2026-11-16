@@ -22,7 +22,7 @@ body {
 @media print {
   @page {
     size: A4 landscape;
-    margin: 6mm 8mm;
+    margin: 4mm 5mm;
   }
 
   html, body {
@@ -37,8 +37,16 @@ body {
     print-color-adjust: exact !important;
   }
 
-  /* Suppress browser chrome, navigation, headers, and modal actions */
-  nav, header, aside, footer, .no-print, [role="dialog"] button, button {
+  /* Universal print isolation: completely suppress standard screen elements */
+  nav,
+  header,
+  aside,
+  footer,
+  .no-print,
+  #main-schedule-screen,
+  #main-screen-interactive,
+  [role="dialog"] button,
+  button {
     display: none !important;
   }
 
@@ -46,7 +54,7 @@ body {
     display: block !important;
   }
 
-  /* Completely neutralize Dialog wrappers so they print as normal document flow */
+  /* Completely neutralize Dialog wrappers so printable sheet starts immediately at top of page 1 */
   [role="dialog"],
   [role="dialog"] > div {
     position: static !important;
@@ -73,6 +81,8 @@ body {
     box-shadow: none !important;
     border: none !important;
     page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-before: avoid !important;
   }
 
   .printable-schedule-sheet table {

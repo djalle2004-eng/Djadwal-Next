@@ -81,6 +81,7 @@ export default function SchedulePage() {
   // Print Modal
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [printSettings, setPrintSettings] = useState<any>(null);
+  const [hideEmptyDaysInPrint, setHideEmptyDaysInPrint] = useState(true);
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -169,13 +170,101 @@ export default function SchedulePage() {
     });
   }, [groups, selectedSpecialization, selectedYearLevel]);
 
-  // Helper to identify if an assignment is a lecture (محاضرة)
+  // Helper to accurately identify if an assignment is a lecture (محاضرة)
   const isLectureSession = (a: Assignment) => {
-    if (a.session_type === 'cours' || a.session_type === 'lecture') return true;
-    if (a.group_name && (a.group_name.includes('محاضرة') || a.group_name.includes('الدفعة') || a.group_name.includes('lecture'))) return true;
     const g = groups.find((item) => item.id === a.group_id);
-    if (g && (g.group_type === 'lecture_group' || g.group_type === 'section' || g.name?.includes('محاضرة'))) return true;
+    const r = rooms.find((item) => item.id === a.room_id);
+    const groupName = (a.group_name || g?.name || '').trim();
+    const roomLower = (a.room_name || r?.name || '').toLowerCase();
+    const sessionTypeRaw = (a.session_type || '').toLowerCase();
+
+    // 1. Explicit subgroup (فوج 1, فوج 2, G1...) in normal classrooms is TD/TP, NOT a lecture!
+    const isExplicitSubgroup = /(فوج|ف\s*\.?\s*\d+|group|grp|g\d+)/i.test(groupName) &&
+      !groupName.includes('كافة الأفواج') &&
+      !groupName.includes('جميع الأفواج');
+
+    if (isExplicitSubgroup) {
+      return false;
+    }
+
+    // 2. Labs/TP
+    if (roomLower.includes('مخبر') || roomLower.includes('معمل') || sessionTypeRaw === 'tp' || groupName.toLowerCase().includes('tp')) {
+      return false;
+    }
+
+    // 3. Amphitheaters are always lectures
+    if (roomLower.includes('مدرج') || roomLower.includes('amphi') || roomLower.includes('محاضرات')) {
+      return true;
+    }
+
+    // 4. Cohorts / general batch
+    if (groupName.includes('محاضرة') || groupName.includes('الدفعة') || groupName.includes('ج.م') || (g && (g.group_type === 'lecture_group' || g.group_type === 'section'))) {
+      return true;
+    }
+
+    if (sessionTypeRaw === 'cours' || sessionTypeRaw === 'lecture') {
+      return !roomLower.includes('قاعة');
+    }
+
     return false;
+  };
+
+  // Helper to resolve detailed session metadata for display & print
+  const resolveSessionDetails = (a: Assignment) => {
+    const g = groups.find((item) => item.id === a.group_id);
+    const r = rooms.find((item) => item.id === a.room_id);
+    const groupName = (a.group_name || g?.name || '').trim();
+    const roomName = (a.room_name || r?.name || 'قاعة').trim();
+    const roomLower = roomName.toLowerCase();
+    const sessionTypeRaw = (a.session_type || '').toLowerCase();
+
+    const isAmphi = roomLower.includes('مدرج') || roomLower.includes('amphi') || roomLower.includes('محاضرات');
+    const isLab = roomLower.includes('مخبر') || roomLower.includes('معمل') || roomLower.includes('lab') || sessionTypeRaw === 'tp' || groupName.toLowerCase().includes('tp');
+    const isSubgroup = /(فوج|ف\s*\.?\s*\d+|group|grp|g\d+)/i.test(groupName) &&
+      !groupName.includes('كافة الأفواج') &&
+      !groupName.includes('جميع الأفواج');
+
+    let isLecture = false;
+    let typeLabel = 'أعمال موجهة (أ.م)';
+
+    if (isLab) {
+      typeLabel = 'أعمال تطبيقية (أ.ت)';
+      isLecture = false;
+    } else if (isSubgroup) {
+      typeLabel = 'أعمال موجهة (أ.م)';
+      isLecture = false;
+    } else if (isAmphi || groupName.includes('محاضرة') || groupName.includes('الدفعة') || groupName.includes('ج.م') || (g && (g.group_type === 'lecture_group' || g.group_type === 'section'))) {
+      typeLabel = 'محاضرة';
+      isLecture = true;
+    } else if (sessionTypeRaw === 'td') {
+      typeLabel = 'أعمال موجهة (أ.م)';
+      isLecture = false;
+    } else if (sessionTypeRaw === 'cours' || sessionTypeRaw === 'lecture') {
+      typeLabel = isAmphi ? 'محاضرة' : 'أعمال موجهة (أ.م)';
+      isLecture = isAmphi;
+    }
+
+    // Extract prominent group badge (e.g. "فوج 1", "فوج 2", "ف 01")
+    let displayGroupBadge = '';
+    const matchFawj = groupName.match(/(فوج\s*\d+|ف\s*\.?\s*\d+|G\d+)/i);
+    if (matchFawj) {
+      displayGroupBadge = matchFawj[0];
+    } else if (isLecture) {
+      displayGroupBadge = 'محاضرة';
+    } else if (groupName) {
+      displayGroupBadge = groupName.length > 15 ? groupName.substring(0, 15) : groupName;
+    } else {
+      displayGroupBadge = typeLabel;
+    }
+
+    return {
+      isLecture,
+      typeLabel,
+      displayGroupBadge,
+      roomName,
+      professorName: a.professor_name || 'أستاذ',
+      courseName: a.course_name || 'مقياس',
+    };
   };
 
   // Helper to check if an assignment belongs to a specialization
@@ -288,6 +377,11 @@ export default function SchedulePage() {
     });
   };
 
+  // Helper to check if a day has 0 assignments across all time slots
+  const isDayEmpty = (dayId: number) => {
+    return TIME_SLOTS.every((slot) => getCellAssignments(dayId, slot).length === 0);
+  };
+
   // Selected Entity Name for Header / Print
   const currentEntityName = useMemo(() => {
     if (filterType === 'specialization') {
@@ -337,8 +431,10 @@ export default function SchedulePage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. Header Bar */}
+    <div>
+      {/* 1. Main Interactive Screen (Completely hidden in @media print) */}
+      <div id="main-schedule-screen" className="space-y-6 no-print">
+        {/* 1. Header Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -859,6 +955,7 @@ export default function SchedulePage() {
           </table>
         </div>
       )}
+      </div>
 
       {/* 4. Session Details Modal */}
       <Dialog open={!!activeSession} onClose={() => setActiveSession(null)} size="md">
@@ -926,22 +1023,33 @@ export default function SchedulePage() {
 
       {/* 5. Official College A4 Landscape Print Engine Dialog */}
       <Dialog open={isPrintDialogOpen} onClose={() => setIsPrintDialogOpen(false)} size="full">
-        <div className="p-4 sm:p-6 space-y-4 max-w-[96vw] w-full bg-white rounded-2xl max-h-[95vh] overflow-y-auto print:p-0 print:m-0 print:border-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible print:max-w-none print:w-full">
-          {/* Dialog Action Header - Suppressed in Print */}
-          <div className="no-print flex items-center justify-between border-b pb-4">
-            <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+        <div className="p-4 sm:p-6 space-y-3 max-w-[96vw] w-full bg-white rounded-2xl max-h-[90vh] overflow-y-auto print:p-0 print:m-0 print:border-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible print:max-w-none print:w-full">
+          {/* Dialog Action Header - Sticky Top Bar in Screen, Completely Hidden in Print */}
+          <div className="no-print sticky top-0 z-20 bg-white/95 backdrop-blur-md flex flex-wrap items-center justify-between border-b pb-3 pt-1 px-3 shadow-xs rounded-t-xl gap-3">
+            <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Printer className="w-5 h-5 text-blue-600" />
               <span>معاينة الطباعة الرسمية للكلية (A4 أفقي - Landscape)</span>
             </DialogTitle>
             <DialogDescription className="sr-only">
               معاينة جدول التوقيت بتنسيق الطباعة الجامعية الرسمية
             </DialogDescription>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {/* Option to hide empty days in print */}
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={hideEmptyDaysInPrint}
+                  onChange={(e) => setHideEmptyDaysInPrint(e.target.checked)}
+                  className="rounded text-blue-600 focus:ring-blue-500 h-4 w-4"
+                />
+                <span>إخفاء الأيام الفارغة في الطباعة</span>
+              </label>
+
               <Button
                 variant="primary"
                 size="sm"
                 onClick={executePrint}
-                className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-xs"
               >
                 <Printer className="w-4 h-4" />
                 <span>إرسال إلى الطابعة الآن</span>
@@ -953,7 +1061,7 @@ export default function SchedulePage() {
           </div>
 
           {/* Printable Sheet */}
-          <div className="printable-schedule-sheet relative p-4 sm:p-6 border border-slate-300 print:border-none rounded-xl print:rounded-none bg-white text-slate-900 print-content overflow-hidden">
+          <div className="printable-schedule-sheet relative p-4 sm:p-5 border border-slate-300 print:border-none rounded-xl print:rounded-none bg-white text-slate-900 print-content overflow-hidden">
             {/* Watermark */}
             {printSettings?.enable_watermark && (printSettings.faculty_logo || printSettings.university_logo) && (
               <div
@@ -963,70 +1071,88 @@ export default function SchedulePage() {
                 <img
                   src={printSettings.faculty_logo || printSettings.university_logo}
                   alt=""
-                  className="w-80 h-80 object-contain grayscale"
+                  className="w-72 h-72 object-contain grayscale"
                 />
               </div>
             )}
 
             {/* Algerian Official Triple Header */}
-            <div className="relative z-10 flex items-center justify-between border-b-2 border-slate-900 pb-3 mb-3">
+            <div className="relative z-10 flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-2">
               {/* University Logo (Right in RTL) */}
-              <div className="w-20 h-20 flex items-center justify-center shrink-0">
+              <div className="w-16 h-16 flex items-center justify-center shrink-0">
                 {printSettings?.university_logo ? (
                   <img
                     src={printSettings.university_logo}
-                    alt="شعار الجامعة"
-                    className="max-h-20 max-w-20 object-contain"
+                    alt=""
+                    className="max-h-16 max-w-16 object-contain"
                   />
                 ) : (
-                  <div className="w-16 h-16 border border-dashed border-slate-300 rounded-full flex items-center justify-center text-[10px] text-slate-400">
-                    شعار الجامعة
-                  </div>
+                  <img
+                    src="/images/university-logo.svg"
+                    alt=""
+                    className="max-h-16 max-w-16 object-contain opacity-85"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
                 )}
               </div>
 
-              {/* Official Text (Center) */}
+              {/* Official Text (Center) - Dignified and compact */}
               <div className="text-center flex-1 px-3">
-                <h2 className="font-bold text-xs tracking-wider text-slate-900">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
-                <h3 className="font-bold text-xs mt-0.5 text-slate-800">وزارة التعليم العالي والبحث العلمي</h3>
-                <h4 className="font-extrabold text-sm mt-0.5 text-blue-950">
+                <h2 className="font-bold text-[11px] tracking-wider text-slate-900">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
+                <h3 className="font-bold text-[10.5px] mt-0.5 text-slate-800">وزارة التعليم العالي والبحث العلمي</h3>
+                <h4 className="font-black text-xs sm:text-sm mt-0.5 text-blue-950">
                   {printSettings?.institution_name || 'جامعة الشهيد حمه لخضر - الوادي'}
                 </h4>
-                <h5 className="text-xs text-slate-800 mt-0.5 font-bold">
+                <h5 className="text-[11px] text-slate-800 mt-0.5 font-bold">
                   {printSettings?.faculty_name || 'كلية العلوم الاقتصادية والتجارية وعلوم التسيير'}
                 </h5>
-                <div className="text-[11px] text-slate-700 mt-1 font-semibold">
+                <div className="text-[10px] text-slate-700 mt-0.5 font-semibold">
                   السنة الجامعية: {academicYear} | {semester}
                 </div>
               </div>
 
               {/* Faculty Logo (Left in RTL) */}
-              <div className="w-20 h-20 flex items-center justify-center shrink-0">
+              <div className="w-16 h-16 flex items-center justify-center shrink-0">
                 {printSettings?.faculty_logo ? (
                   <img
                     src={printSettings.faculty_logo}
-                    alt="شعار الكلية"
-                    className="max-h-20 max-w-20 object-contain"
+                    alt=""
+                    className="max-h-16 max-w-16 object-contain"
                   />
                 ) : (
-                  <div className="w-16 h-16 border border-dashed border-slate-300 rounded-full flex items-center justify-center text-[10px] text-slate-400">
-                    شعار الكلية
+                  // Clean empty spacing without text or dashed box
+                  <div className="w-16 h-16" />
+                )}
+              </div>
+            </div>
+
+            {/* Scope Title (Single Clean Framed Title, NO DUPLICATION, NO BIDI PARENTHESIS BUGS) */}
+            <div className="relative z-10 text-center my-2">
+              <div className="inline-block bg-slate-50 border-2 border-slate-900 px-6 py-1 rounded-lg shadow-xs">
+                {filterType === 'specialization' ? (
+                  <div className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center justify-center gap-2 flex-wrap" dir="rtl">
+                    <span>جدول استعمال الزمن لـ:</span>
+                    <bdi className="text-blue-950 font-black">
+                      {selectedSpecialization === 'all' ? 'كافة التخصصات' : `تخصص ${selectedSpecialization}`}
+                    </bdi>
+                    <span className="text-slate-700 font-bold">
+                      {selectedEntityId !== 'all'
+                        ? `(${groups.find((item) => item.id === Number(selectedEntityId))?.name || 'فوج محدد'} + المحاضرات)`
+                        : '(المحاضرات وكافة الأفواج)'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-xs sm:text-sm font-extrabold text-slate-900" dir="rtl">
+                    {currentEntityName}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Scope Title (Single Clean Framed Title, NO DUPLICATION) */}
-            <div className="relative z-10 text-center my-2">
-              <div className="inline-block bg-slate-100 border-2 border-slate-900 px-5 py-1 rounded-lg">
-                <span className="text-xs sm:text-sm font-extrabold text-slate-900">
-                  {currentEntityName}
-                </span>
-              </div>
-            </div>
-
             {/* Fixed-Width Printable Table (10% + 6 x 15% = 100%) */}
-            <div className="relative z-10 mt-3 overflow-x-hidden">
+            <div className="relative z-10 mt-2 overflow-x-hidden">
               <table className="w-full table-fixed border-collapse text-center" style={{ border: '2px solid #000' }}>
                 <colgroup>
                   <col className="w-[10%]" />
@@ -1039,13 +1165,13 @@ export default function SchedulePage() {
                 </colgroup>
                 <thead>
                   <tr className="bg-slate-200 text-slate-900 border-b-2 border-slate-900">
-                    <th className="py-2 px-1 border border-slate-700 font-extrabold text-[10.5px]">
+                    <th className="py-1 px-1 border border-slate-700 font-extrabold text-[10px]">
                       اليوم / التوقيت
                     </th>
                     {TIME_SLOTS.map((s) => (
-                      <th key={s.id} className="py-1 px-0.5 border border-slate-700 font-extrabold text-[9.5px] leading-tight">
+                      <th key={s.id} className="py-1 px-0.5 border border-slate-700 font-extrabold text-[9px] leading-tight">
                         <div>{s.label}</div>
-                        <div className="text-[8.5px] font-normal text-slate-700">{s.periodName}</div>
+                        <div className="text-[8px] font-normal text-slate-700">{s.periodName}</div>
                       </th>
                     ))}
                   </tr>
@@ -1053,10 +1179,11 @@ export default function SchedulePage() {
                 <tbody>
                   {DAYS.map((day) => {
                     if (selectedDayId !== 'all' && Number(selectedDayId) !== day.id) return null;
+                    if (hideEmptyDaysInPrint && isDayEmpty(day.id)) return null;
 
                     return (
                       <tr key={day.id} className="border border-slate-700">
-                        <td className="py-2 px-1 font-bold border border-slate-700 bg-slate-100 text-slate-900 text-[10px]">
+                        <td className="py-1 px-1 font-extrabold border border-slate-700 bg-slate-100 text-slate-900 text-[9.5px]">
                           {day.name}
                         </td>
                         {TIME_SLOTS.map((slot) => {
@@ -1065,37 +1192,64 @@ export default function SchedulePage() {
                           return (
                             <td
                               key={slot.id}
-                              className="p-1 border border-slate-700 align-top h-14 overflow-hidden"
+                              className="p-1 border border-slate-700 align-top min-h-12 overflow-hidden"
                             >
                               {cellSessions.length === 0 ? (
                                 <span className="text-[9px] text-slate-300 font-mono">-</span>
                               ) : (
-                                cellSessions.map((s, idx) => {
-                                  const isLecture = isLectureSession(s);
-                                  return (
-                                    <div
-                                      key={`${s.id}-${idx}`}
-                                      className={`p-1 rounded text-start leading-tight border ${
-                                        idx > 0 ? 'mt-1 pt-1 border-t border-slate-300' : ''
-                                      } ${
-                                        isLecture
-                                          ? 'bg-amber-50/70 border-amber-300'
-                                          : 'bg-blue-50/70 border-blue-300'
-                                      }`}
-                                    >
-                                      <div className="font-extrabold text-[9px] truncate text-slate-950">
-                                        {s.course_name}
+                                <div
+                                  className={
+                                    cellSessions.length > 1
+                                      ? 'grid grid-cols-2 gap-1 w-full'
+                                      : 'w-full'
+                                  }
+                                >
+                                  {cellSessions.map((s, idx) => {
+                                    const details = resolveSessionDetails(s);
+                                    return (
+                                      <div
+                                        key={`${s.id}-${idx}`}
+                                        className={`p-1 rounded text-start leading-tight border transition-all ${
+                                          details.isLecture
+                                            ? 'bg-amber-50/90 border-amber-300'
+                                            : 'bg-blue-50/90 border-blue-300'
+                                        }`}
+                                      >
+                                        {/* Top row: Group Badge + Room */}
+                                        <div className="flex items-center justify-between text-[8px] font-bold pb-0.5">
+                                          <span
+                                            className={`px-1 py-0.2 rounded text-[7.5px] font-black shrink-0 ${
+                                              details.isLecture
+                                                ? 'bg-amber-600 text-white'
+                                                : 'bg-blue-700 text-white'
+                                            }`}
+                                          >
+                                            {details.displayGroupBadge}
+                                          </span>
+                                          <span className="text-slate-700 font-bold text-[7.5px] truncate mr-1">
+                                            {details.roomName}
+                                          </span>
+                                        </div>
+
+                                        {/* Course Name */}
+                                        <div
+                                          className="font-extrabold text-[8.5px] truncate text-slate-950 my-0.5"
+                                          title={details.courseName}
+                                        >
+                                          {details.courseName}
+                                        </div>
+
+                                        {/* Professor + Type Label */}
+                                        <div className="flex items-center justify-between text-[7.5px] text-slate-700 font-medium pt-0.5 border-t border-slate-200/60">
+                                          <span className="truncate max-w-[65%]">{details.professorName}</span>
+                                          <span className="text-[7px] text-slate-500 font-semibold shrink-0">
+                                            {details.typeLabel}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <div className="flex items-center justify-between text-[8px] font-semibold mt-0.5 text-slate-700">
-                                        <span className="truncate">{s.professor_name}</span>
-                                        <span className="font-bold shrink-0">{s.room_name || 'قاعة'}</span>
-                                      </div>
-                                      <div className="text-[8px] font-bold text-blue-800 mt-0.5">
-                                        {isLecture ? 'محاضرة' : s.group_name}
-                                      </div>
-                                    </div>
-                                  );
-                                })
+                                    );
+                                  })}
+                                </div>
                               )}
                             </td>
                           );
@@ -1107,15 +1261,15 @@ export default function SchedulePage() {
               </table>
             </div>
 
-            {/* Official Signatures Block */}
-            <div className="relative z-10 grid grid-cols-2 gap-8 pt-4 mt-2 text-center text-xs font-bold text-slate-900">
+            {/* Official Signatures Block - Compact */}
+            <div className="relative z-10 grid grid-cols-2 gap-8 pt-3 mt-1 text-center text-xs font-bold text-slate-900">
               <div>
                 <span>{printSettings?.department_head_title || 'تأشيرة رئيس القسم'}</span>
-                <div className="h-12 mt-1 border-b border-dashed border-slate-400"></div>
+                <div className="h-10 mt-1 border-b border-dashed border-slate-400"></div>
               </div>
               <div>
                 <span>{printSettings?.vice_dean_title || 'مصادقة عميد الكلية'}</span>
-                <div className="h-12 mt-1 border-b border-dashed border-slate-400"></div>
+                <div className="h-10 mt-1 border-b border-dashed border-slate-400"></div>
               </div>
             </div>
           </div>

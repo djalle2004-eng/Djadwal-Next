@@ -92,6 +92,7 @@ export default function GroupSchedulesPage() {
 
   // Print Mode State
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [printSettings, setPrintSettings] = useState<any>(null);
   const [printScope, setPrintScope] = useState<'current_group' | 'all_specialization'>('current_group');
   const [copiedNotification, setCopiedNotification] = useState(false);
 
@@ -99,17 +100,19 @@ export default function GroupSchedulesPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [assignData, groupsData, profsData, roomsData] = await Promise.all([
+      const [assignData, groupsData, profsData, roomsData, printData] = await Promise.all([
         api.get(`/assignments?academicYear=${encodeURIComponent(academicYear)}&semester=${encodeURIComponent(semester)}&limit=2000`),
         api.get('/groups?limit=500'),
         api.get('/professors?limit=500'),
         api.get('/rooms?limit=500'),
+        api.getPrintSettings().catch(() => null),
       ]);
 
       if (Array.isArray(assignData)) setAssignments(assignData);
       if (Array.isArray(groupsData)) setGroups(groupsData);
       if (Array.isArray(profsData)) setProfessors(profsData);
       if (Array.isArray(roomsData)) setRooms(roomsData);
+      if (printData) setPrintSettings(printData);
     } catch (err: any) {
       console.error('Failed to load group schedules data:', err);
     } finally {
@@ -258,8 +261,9 @@ export default function GroupSchedulesPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* 1. Header & Actions Bar */}
+    <div>
+      <div id="main-groups-schedule-screen" className="space-y-6 no-print">
+        {/* 1. Header & Actions Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -726,6 +730,7 @@ export default function GroupSchedulesPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* 4. Session Details Dialog */}
       <Dialog open={!!activeSession} onClose={() => setActiveSession(null)} size="md">
@@ -796,9 +801,10 @@ export default function GroupSchedulesPage() {
 
       {/* 5. Official College A4 Landscape Print Engine Modal */}
       <Dialog open={isPrintDialogOpen} onClose={() => setIsPrintDialogOpen(false)} size="full">
-        <div className="p-6 space-y-6 max-w-5xl w-full bg-white rounded-2xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between border-b pb-4">
-            <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+        <div className="p-4 sm:p-6 space-y-4 max-w-[96vw] w-full bg-white rounded-2xl max-h-[90vh] overflow-y-auto print:p-0 print:m-0 print:border-none print:shadow-none print:rounded-none print:max-h-none print:overflow-visible print:max-w-none print:w-full">
+          {/* Dialog Action Header - Sticky Top Bar in Screen, Hidden in Print */}
+          <div className="no-print sticky top-0 z-20 bg-white/95 backdrop-blur-md flex flex-wrap items-center justify-between border-b pb-3 pt-1 px-3 shadow-xs rounded-t-xl gap-3">
+            <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Printer className="w-5 h-5 text-blue-600" />
               <span>معاينة الطباعة الرسمية للكلية (A4 أفقي - Landscape)</span>
             </DialogTitle>
@@ -810,7 +816,7 @@ export default function GroupSchedulesPage() {
                 variant="primary"
                 size="sm"
                 onClick={executePrint}
-                className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold"
               >
                 <Printer className="w-4 h-4" />
                 <span>إرسال إلى الطابعة الآن</span>
@@ -822,7 +828,7 @@ export default function GroupSchedulesPage() {
           </div>
 
           {/* Scope Controls */}
-          <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-3 rounded-xl text-xs font-semibold text-slate-700 border">
+          <div className="no-print flex flex-wrap items-center gap-4 bg-slate-50 p-3 rounded-xl text-xs font-semibold text-slate-700 border">
             <span>نطاق الطباعة:</span>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
@@ -851,46 +857,95 @@ export default function GroupSchedulesPage() {
             {targetGroupsForPrint.map((grp, index) => (
               <div
                 key={grp.id}
-                className={`p-6 border border-slate-300 rounded-xl bg-white text-slate-900 ${
+                className={`printable-schedule-sheet p-4 sm:p-5 border border-slate-300 print:border-none rounded-xl print:rounded-none bg-white text-slate-900 ${
                   index > 0 ? 'print:break-before-page' : ''
                 }`}
                 style={{ breakAfter: index < targetGroupsForPrint.length - 1 ? 'page' : 'auto' }}
               >
-                {/* Official Algerian Republic & University Header */}
-                <div className="text-center border-b pb-3 mb-4">
-                  <h2 className="font-bold text-sm tracking-wide">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
-                  <h3 className="font-bold text-xs mt-0.5">وزارة التعليم العالي والبحث العلمي</h3>
-                  <h4 className="font-semibold text-xs mt-0.5">جامعة الشهيد حمه لخضر - الوادي</h4>
-                  <h5 className="text-xs text-slate-700 mt-0.5 font-medium">كلية العلوم الاقتصادية والتجارية وعلوم التسيير</h5>
-                  <div className="text-[11px] text-slate-600 mt-1 font-mono">
-                    السنة الجامعية: {academicYear} | {semester}
+                {/* Official Algerian Republic & University Header with Logos */}
+                <div className="relative z-10 flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-2">
+                  {/* University Logo */}
+                  <div className="w-16 h-16 flex items-center justify-center shrink-0">
+                    {printSettings?.university_logo ? (
+                      <img
+                        src={printSettings.university_logo}
+                        alt=""
+                        className="max-h-16 max-w-16 object-contain"
+                      />
+                    ) : (
+                      <img
+                        src="/images/university-logo.svg"
+                        alt=""
+                        className="max-h-16 max-w-16 object-contain opacity-85"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Text Header */}
+                  <div className="text-center flex-1 px-3">
+                    <h2 className="font-bold text-[11px] tracking-wider text-slate-900">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
+                    <h3 className="font-bold text-[10.5px] mt-0.5 text-slate-800">وزارة التعليم العالي والبحث العلمي</h3>
+                    <h4 className="font-black text-xs sm:text-sm mt-0.5 text-blue-950">
+                      {printSettings?.institution_name || 'جامعة الشهيد حمه لخضر - الوادي'}
+                    </h4>
+                    <h5 className="text-[11px] text-slate-800 mt-0.5 font-bold">
+                      {printSettings?.faculty_name || 'كلية العلوم الاقتصادية والتجارية وعلوم التسيير'}
+                    </h5>
+                    <div className="text-[10px] text-slate-700 mt-0.5 font-semibold">
+                      السنة الجامعية: {academicYear} | {semester}
+                    </div>
+                  </div>
+
+                  {/* Faculty Logo */}
+                  <div className="w-16 h-16 flex items-center justify-center shrink-0">
+                    {printSettings?.faculty_logo ? (
+                      <img
+                        src={printSettings.faculty_logo}
+                        alt=""
+                        className="max-h-16 max-w-16 object-contain"
+                      />
+                    ) : (
+                      <div className="w-16 h-16" />
+                    )}
                   </div>
                 </div>
 
                 {/* Document Title & Group Meta */}
-                <div className="text-center my-3">
-                  <h3 className="text-base font-extrabold text-blue-950 inline-block border-b-2 border-blue-900 pb-0.5">
+                <div className="text-center my-2">
+                  <h3 className="text-sm font-extrabold text-blue-950 inline-block border-b-2 border-blue-900 pb-0.5">
                     الجدول الزمني لتوزيع المحاضرات والأعمال الموجهة
                   </h3>
-                  <div className="mt-2 text-xs flex justify-center items-center gap-6 text-slate-800">
-                    <div>الفوج: <strong className="text-sm font-bold text-blue-900">{grp.name}</strong></div>
+                  <div className="mt-1.5 text-xs flex justify-center items-center gap-6 text-slate-800 font-bold">
+                    <div>الفوج: <strong className="text-blue-900 font-black">{grp.name}</strong></div>
                     <div>المستوى: <strong>{grp.year || 'ليسانس'}</strong></div>
                     <div>التخصص: <strong>{grp.specialization || 'جذع مشترك'}</strong></div>
                   </div>
                 </div>
 
                 {/* Printable Table Grid */}
-                <div className="mt-4">
-                  <table className="w-full border-collapse text-center text-xs" style={{ border: '2px solid #333' }}>
+                <div className="mt-2 overflow-x-hidden">
+                  <table className="w-full table-fixed border-collapse text-center" style={{ border: '2px solid #000' }}>
+                    <colgroup>
+                      <col className="w-[10%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[15%]" />
+                    </colgroup>
                     <thead>
-                      <tr className="bg-slate-200">
-                        <th className="py-2.5 px-3 border border-slate-700 w-24 font-bold text-slate-900">
+                      <tr className="bg-slate-200 text-slate-900 border-b-2 border-slate-900">
+                        <th className="py-1 px-1 border border-slate-700 font-extrabold text-[10px]">
                           اليوم / التوقيت
                         </th>
                         {TIME_SLOTS.map((s) => (
-                          <th key={s.id} className="py-2 px-1 border border-slate-700 font-bold text-slate-900 text-xs">
-                            <div className="font-extrabold">{s.label}</div>
-                            <div className="text-[9px] text-slate-600 font-normal">{s.periodName}</div>
+                          <th key={s.id} className="py-1 px-0.5 border border-slate-700 font-extrabold text-[9px] leading-tight">
+                            <div>{s.label}</div>
+                            <div className="text-[8px] font-normal text-slate-700">{s.periodName}</div>
                           </th>
                         ))}
                       </tr>
@@ -898,7 +953,7 @@ export default function GroupSchedulesPage() {
                     <tbody>
                       {DAYS.map((day) => (
                         <tr key={day.id} className="border border-slate-700">
-                          <td className="py-3 px-3 font-bold border border-slate-700 bg-slate-100 text-slate-900">
+                          <td className="py-1 px-1 font-extrabold border border-slate-700 bg-slate-100 text-slate-900 text-[9.5px]">
                             {day.name}
                           </td>
                           {TIME_SLOTS.map((slot) => {
@@ -906,19 +961,31 @@ export default function GroupSchedulesPage() {
                             return (
                               <td
                                 key={slot.id}
-                                className="p-1.5 border border-slate-700 h-[68px] align-middle"
+                                className="p-1 border border-slate-700 align-top min-h-12 overflow-hidden"
                               >
                                 {cellSessions.length === 0 ? (
-                                  <span className="text-slate-400 font-light">—</span>
+                                  <span className="text-[9px] text-slate-300 font-mono">-</span>
                                 ) : (
                                   cellSessions.map((s) => {
                                     const isLecture = isLectureSession(s);
                                     return (
-                                      <div key={s.id} className="text-[11px] leading-tight">
-                                        <div className="font-extrabold text-slate-900">{s.course_name}</div>
-                                        <div className="text-[10px] text-slate-700 font-medium mt-0.5">{s.professor_name}</div>
-                                        <div className="text-[9px] font-mono font-bold text-blue-900 mt-0.5">
-                                          {isLecture ? 'محاضرة' : 'TD'} | {s.room_name || 'قاعة'}
+                                      <div
+                                        key={s.id}
+                                        className={`p-1 rounded text-start leading-tight border ${
+                                          isLecture
+                                            ? 'bg-amber-50/90 border-amber-300'
+                                            : 'bg-blue-50/90 border-blue-300'
+                                        }`}
+                                      >
+                                        <div className="font-extrabold text-[8.5px] truncate text-slate-950">
+                                          {s.course_name}
+                                        </div>
+                                        <div className="flex items-center justify-between text-[7.5px] text-slate-700 font-medium mt-0.5">
+                                          <span className="truncate">{s.professor_name}</span>
+                                          <span className="font-bold">{s.room_name || 'قاعة'}</span>
+                                        </div>
+                                        <div className="text-[7px] font-bold text-blue-900 mt-0.5">
+                                          {isLecture ? 'محاضرة' : 'أعمال موجهة (أ.م)'}
                                         </div>
                                       </div>
                                     );
@@ -933,15 +1000,15 @@ export default function GroupSchedulesPage() {
                   </table>
                 </div>
 
-                {/* Official Signatures Block */}
-                <div className="grid grid-cols-2 gap-8 pt-8 mt-4 text-center text-xs font-bold text-slate-800">
+                {/* Official Signatures Block - Compact */}
+                <div className="relative z-10 grid grid-cols-2 gap-8 pt-3 mt-1 text-center text-xs font-bold text-slate-900">
                   <div>
-                    <span>تأشيرة رئيس القسم</span>
-                    <div className="h-16 mt-2 border-b border-dashed border-slate-400"></div>
+                    <span>{printSettings?.department_head_title || 'تأشيرة رئيس القسم'}</span>
+                    <div className="h-10 mt-1 border-b border-dashed border-slate-400"></div>
                   </div>
                   <div>
-                    <span>مصادقة عميد الكلية</span>
-                    <div className="h-16 mt-2 border-b border-dashed border-slate-400"></div>
+                    <span>{printSettings?.vice_dean_title || 'مصادقة عميد الكلية'}</span>
+                    <div className="h-10 mt-1 border-b border-dashed border-slate-400"></div>
                   </div>
                 </div>
               </div>
