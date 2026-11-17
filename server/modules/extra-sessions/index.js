@@ -253,7 +253,6 @@ async function checkConflictsEndpoint(req, res) {
 }
 
 async function createExtraSession(req, res) {
-  const uow = unitOfWork;
   try {
     const sessionData = req.body;
     const {
@@ -309,7 +308,7 @@ async function createExtraSession(req, res) {
       }
     }
 
-    const createdList = await uow.runInTransaction(async () => {
+    const createdList = await unitOfWork(async (uow) => {
       const results = [];
       for (const rid of targetRooms) {
         for (const gid of targetGroups) {
@@ -330,7 +329,7 @@ async function createExtraSession(req, res) {
             exam_note: sessionData.exam_note || '',
             version: 1
           };
-          const created = await extraSessionsRepository.create(payload, uow);
+          const created = await extraSessionsRepository.create(payload, { uow, userId: req.user?.id });
           results.push(created);
         }
       }
@@ -349,7 +348,6 @@ async function createExtraSession(req, res) {
 }
 
 async function updateExtraSession(req, res) {
-  const uow = unitOfWork;
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -392,8 +390,8 @@ async function updateExtraSession(req, res) {
       }
     }
 
-    const updated = await uow.runInTransaction(async () => {
-      return await extraSessionsRepository.update(Number(id), updateData, uow);
+    const updated = await unitOfWork(async (uow) => {
+      return await extraSessionsRepository.update(Number(id), updateData, { uow, userId: req.user?.id });
     });
 
     res.json(updated);
@@ -407,11 +405,10 @@ async function updateExtraSession(req, res) {
 }
 
 async function deleteExtraSession(req, res) {
-  const uow = unitOfWork;
   try {
     const { id } = req.params;
-    await uow.runInTransaction(async () => {
-      await extraSessionsRepository.delete(Number(id), uow);
+    await unitOfWork(async (uow) => {
+      await extraSessionsRepository.delete(Number(id), { uow, userId: req.user?.id });
     });
     res.json({ success: true, message: 'تم حذف الحصة بنجاح' });
   } catch (err) {
