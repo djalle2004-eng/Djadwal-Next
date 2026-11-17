@@ -41,9 +41,13 @@ async function listProfessors(req, res) {
       params.push(academicYear);
     } else {
       joinYearClause = `LEFT JOIN (
-        SELECT DISTINCT ON (professor_id) professor_id, academic_rank, is_temporary, academic_year
-        FROM professor_academic_profiles
-        ORDER BY professor_id, created_at DESC
+        SELECT pap1.professor_id, pap1.academic_rank, pap1.is_temporary, pap1.academic_year
+        FROM professor_academic_profiles pap1
+        INNER JOIN (
+          SELECT professor_id, MAX(created_at) as max_created
+          FROM professor_academic_profiles
+          GROUP BY professor_id
+        ) pap2 ON pap1.professor_id = pap2.professor_id AND pap1.created_at = pap2.max_created
       ) pap ON p.id = pap.professor_id`;
     }
 
@@ -58,7 +62,19 @@ async function listProfessors(req, res) {
       ORDER BY p.name ASC
     `;
 
-    const rows = await executeQuery(sql, params);
+    let rows;
+    try {
+      rows = await executeQuery(sql, params);
+    } catch (queryErr) {
+      console.warn('[Professors] Enriched query failed, falling back to basic professors query:', queryErr.message);
+      // Fallback in case table or join has transient issue
+      const fallbackWhere = whereClauses
+        .map(w => w.replace(/COALESCE\(pap\.[^,]+,\s*(p\.[^)]+)\)/g, '$1'))
+        .join(' AND ');
+      const fallbackParams = academicYear ? params.slice(0, params.length - 1) : params;
+      const fallbackSql = `SELECT p.*, p.academic_rank as effective_rank, p.is_temporary as effective_is_temporary FROM professors p ${fallbackWhere ? `WHERE ${fallbackWhere}` : ''} ORDER BY p.name ASC`;
+      rows = await executeQuery(fallbackSql, fallbackParams);
+    }
 
     // Format with official Arabic rank labels
     const enriched = rows.map(r => {

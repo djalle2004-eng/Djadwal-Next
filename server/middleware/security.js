@@ -124,12 +124,20 @@ const helmetMiddleware = helmet({
       defaultSrc: ["'self'", "https://*.onrender.com"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*.onrender.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://*.onrender.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://fonts.googleapis.com", "data:"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
-      connectSrc: ["'self'", "https://*.onrender.com", "https://generativelanguage.googleapis.com", "https://openrouter.ai"],
+      connectSrc: [
+        "'self'",
+        "https://*.onrender.com",
+        "https://generativelanguage.googleapis.com",
+        "https://openrouter.ai",
+        "https://fonts.googleapis.com",
+        "https://fonts.gstatic.com"
+      ],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
-      upgradeInsecureRequests: isProduction ? [] : null
+      // Note: W3C CSP specification ignores upgrade-insecure-requests in report-only mode
+      upgradeInsecureRequests: null
     }
   },
   crossOriginResourcePolicy: { policy: "cross-origin" },

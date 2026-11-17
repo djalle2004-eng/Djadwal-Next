@@ -60,7 +60,18 @@ self.addEventListener('activate', (event) => {
 // 3. Fetch Event Interceptor with Differentiated Strategies
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  const url = new URL(request.url);
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch (err) {
+    return;
+  }
+
+  // Guard: Cache API only supports http: and https: schemes.
+  // Explicitly bypass chrome-extension://, moz-extension://, blob:, about:, etc.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
 
   // Strategy 4: Network-Only for mutating methods (POST, PUT, DELETE, PATCH) & Auth routes
   if (
@@ -88,7 +99,7 @@ self.addEventListener('fetch', (event) => {
             return cachedResponse;
           }
           return fetch(request).then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
+            if (networkResponse && networkResponse.status === 200 && request.url.startsWith('http')) {
               cache.put(request, networkResponse.clone());
             }
             return networkResponse;
@@ -106,7 +117,7 @@ self.addEventListener('fetch', (event) => {
         return fetch(request)
           .then((networkResponse) => {
             // Only cache successful JSON GET responses
-            if (networkResponse && networkResponse.status === 200) {
+            if (networkResponse && networkResponse.status === 200 && request.url.startsWith('http')) {
               cache.put(request, networkResponse.clone());
             }
             return networkResponse;
@@ -150,7 +161,7 @@ self.addEventListener('fetch', (event) => {
       return cache.match(request).then((cachedResponse) => {
         const fetchPromise = fetch(request)
           .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
+            if (networkResponse && networkResponse.status === 200 && request.url.startsWith('http')) {
               cache.put(request, networkResponse.clone());
             }
             return networkResponse;

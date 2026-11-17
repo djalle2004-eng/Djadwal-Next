@@ -257,3 +257,23 @@
    - تطبيق نمط «وسّع ثم قلّص» بصفر DDL تدميري (جميع الأعمدة مضافة كـ `NULLABLE` أو بقيم افتراضية).
    - مفتاح ميزة بيئية `FEATURE_PROFESSOR_RANK_HISTORY` (افتراضياً `true`).
    - مسارات API جديدة ونظامية: `GET /api/v1/professors/ranks`، `GET /api/v1/professors/:id/history`، `POST /api/v1/professors/:id/history` مع حماية Idempotency-Key وقفل تفاؤلي OCC.
+
+---
+
+## 🎨 تحديث هوية المنصة البصرية واستقرار الإنتاج (Brand Identity & Production Hardening)
+
+1. **تحديث هوية الشعار والأيقونات (Brand Assets & Favicon):**
+   - اعتماد الشعار الخطي الدائري الرسمي الجديد لنظام «جدول» بنقاء بصري عالي ومقاسات مربعة متناسقة بدقة 512x512 مع شفافية محيطية مضادة للتشوه (`apps/web/public/logo.png` و `apps/web/public/logo-circle.png`).
+   - إنشاء أيقونات PWA المطابقة بدقة 192x192 و 512x512 في `apps/web/public/icons/`.
+   - توليد أيقونة التبويب المتعددة `apps/web/public/favicon.ico` بخلفية شفافة تتناسب مع جميع أنماط العرض والتصفح.
+
+2. **تحصين عامل الخدمة (PWA Service Worker Hardening):**
+   - حظر اعتراض أو تخزين البروتوكولات غير المدعومة في Cache API (`chrome-extension://`, `moz-extension://`, إلخ) داخل `sw.js` لمنع أخطاء المتصفح غير المعالجة `TypeError: Request scheme is unsupported`.
+
+3. **تسوية الخطوط وتفادي أخطاء OTS Parsing:**
+   - تصحيح ملف `packages/ui/src/styles/fonts.css` بإلغاء مسار الخطوط المحلي المفقود `/fonts/Cairo-Regular.ttf` الذي كان يرجع كـ HTML، والاعتماد النظيف على الخطوط المحلية مع شبكة Google Fonts الرسمية المعتمدة في `layout.tsx`.
+
+4. **مرونة استعلامات الأساتذة وحماية معاملات الوحدة (UoW):**
+   - استبدال استعلام `DISTINCT ON` في مسار `GET /api/v1/professors` باستعلام ANSI-SQL قياسي متوافق مع كافة محركات قواعد البيانات (PostgreSQL / SQLite) مع آلية استرجاع احتياطية تلقائية (Safe Fallback).
+   - إصلاح مناداة `unitOfWork` في مسار الجلسات الاستثنائية `/api/v1/extra-sessions`.
+
