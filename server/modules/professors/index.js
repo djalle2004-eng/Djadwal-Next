@@ -10,7 +10,8 @@ const {
 const {
   dryRunProfessorsImport,
   buildProfessorsExportWorkbook,
-  buildProfessorsTemplateWorkbook
+  buildProfessorsTemplateWorkbook,
+  parseIsTemporary
 } = require('../../../packages/core/src/excel/professor-excel.js');
 
 async function listProfessors(req, res) {
@@ -309,7 +310,7 @@ async function recordHistoricalProfile(profId, academicYear, rank, isTemp, depar
     academicYear,
     rank,
     Boolean(isTemp),
-    def.statutoryQuotaHours,
+    Math.round(def.statutoryQuotaHours || 0),
     department || '',
     notes || ''
   ];
@@ -421,63 +422,79 @@ async function commitProfessorsImport(req, res) {
       const existingRes = await uow.query('SELECT * FROM professors WHERE deleted_at IS NULL');
       const existing = existingRes.rows || existingRes;
 
-      // 2. Perform dry run analysis
-      const dryRun = dryRunProfessorsImport(rows, existing);
-
-      if (dryRun.summary.errors > 0 && !skipErrors) {
-        throw new Error(`يحتوي الملف على ${dryRun.summary.errors} أخطاء في البيانات. يرجى تفعيل خيار تجاوز الأخطاء أو تصحيح الملف.`);
-      }
-
       let createdCount = 0;
       let updatedCount = 0;
       let skippedCount = 0;
 
-      for (const item of dryRun.rows) {
-        if (item.action === 'error' || item.action === 'unchanged') {
+      for (const item of rows) {
+        if (!item || !item.name || !item.name.trim()) {
           skippedCount++;
           continue;
         }
 
-        const rankDef = getRankDefinition(item.academic_rank);
+        if (item.action === 'unchanged' || item.action === 'error') {
+          skippedCount++;
+          continue;
+        }
+
+        const normRank = normalizeAcademicRank(item.academic_rank || item.title);
+        const rankDef = getRankDefinition(normRank);
+        const isTemp = parseIsTemporary(item.is_temporary, rankDef.isTemporary || normRank === 'temporary');
+
         const profPayload = {
-          name: item.name,
-          email: item.email || null,
-          phone: item.phone || null,
+          name: item.name.trim(),
+          email: item.email && item.email.trim() ? item.email.trim() : null,
+          phone: item.phone && item.phone.trim() ? item.phone.trim() : null,
           title: item.rank_label_arabic || rankDef.labelArabic,
           academic_title: item.rank_label_arabic || rankDef.labelArabic,
-          academic_rank: item.academic_rank,
-          is_temporary: item.is_temporary,
-          specialization: item.specialization || null
+          academic_rank: normRank,
+          is_temporary: isTemp,
+          department: item.department && item.department.trim() ? item.department.trim() : null,
+          phd_specialization: item.specialization && item.specialization.trim() ? item.specialization.trim() : null,
+          full_name_arabic: item.name.trim(),
+          professional_email: item.email && item.email.trim() ? item.email.trim() : null,
+          primary_phone: item.phone && item.phone.trim() ? item.phone.trim() : null
         };
 
-        if (item.action === 'create') {
-          const created = await professorsRepository.create(profPayload, { uow, userId: req.user?.id });
-          if (academicYear && created?.id) {
-            await recordHistoricalProfile(
-              created.id,
-              academicYear,
-              item.academic_rank,
-              item.is_temporary,
-              item.department || '',
-              'استيراد جماعي عبر ملف Excel',
-              { uow }
-            );
-          }
-          createdCount++;
-        } else if (item.action === 'update' && item.id) {
-          await professorsRepository.update(item.id, profPayload, { uow, userId: req.user?.id });
+        // Determine if updating or creating
+        let targetId = item.id ? Number(item.id) : null;
+        if (!targetId && item.email && item.email.trim()) {
+          const match = existing.find(p => p.email && p.email.trim().toLowerCase() === item.email.trim().toLowerCase());
+          if (match) targetId = match.id;
+        }
+        if (!targetId && item.name && item.name.trim()) {
+          const match = existing.find(p => p.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase());
+          if (match) targetId = match.id;
+        }
+
+        if (targetId) {
+          await professorsRepository.update(targetId, profPayload, { uow, userId: req.user?.id });
           if (academicYear) {
             await recordHistoricalProfile(
-              item.id,
+              targetId,
               academicYear,
-              item.academic_rank,
-              item.is_temporary,
-              item.department || '',
+              normRank,
+              isTemp,
+              profPayload.department || '',
               'تحديث جماعي عبر ملف Excel',
               { uow }
             );
           }
           updatedCount++;
+        } else {
+          const created = await professorsRepository.create(profPayload, { uow, userId: req.user?.id });
+          if (academicYear && created?.id) {
+            await recordHistoricalProfile(
+              created.id,
+              academicYear,
+              normRank,
+              isTemp,
+              profPayload.department || '',
+              'استيراد جماعي عبر ملف Excel',
+              { uow }
+            );
+          }
+          createdCount++;
         }
       }
 
