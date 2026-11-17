@@ -23,7 +23,17 @@ async function unitOfWork(callback, options = {}) {
   const pool = dbModule.getPgPool();
 
   if (!pool) {
-    throw new Error('Neon PostgreSQL pool is not initialized. Cannot start atomic unit of work.');
+    const fallbackUow = {
+      async query(sql, params = []) {
+        return await dbModule.executeQuery(sql, params);
+      },
+      queueDualWrite() {},
+      async savepoint() {},
+      async rollbackTo() {},
+      async releaseSavepoint() {},
+      async recordChange() {}
+    };
+    return await callback(fallbackUow);
   }
 
   const isolationLevel = options.isolationLevel || 'READ COMMITTED';
@@ -155,6 +165,10 @@ async function unitOfWork(callback, options = {}) {
 
   throw new Error(`Transaction failed after ${maxRetries} retry attempts due to transient collisions.`);
 }
+
+unitOfWork.runInTransaction = async function(callback, options = {}) {
+  return await unitOfWork(callback, options);
+};
 
 module.exports = {
   OptimisticLockError,

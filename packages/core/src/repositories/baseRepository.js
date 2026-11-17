@@ -4,6 +4,13 @@ function getDatabaseModule() {
   return require('../../../../server/database.js');
 }
 
+function resolveUow(context) {
+  if (!context) return null;
+  if (context.query && typeof context.query === 'function') return context;
+  if (context.uow && typeof context.uow.query === 'function') return context.uow;
+  return null;
+}
+
 class BaseRepository {
   constructor(options) {
     this.tableName = options.tableName;
@@ -63,8 +70,9 @@ class BaseRepository {
       whereClauses.push(`${this.tableName}.deleted_at IS NULL`);
     }
 
+    const uow = resolveUow(options);
     const sql = `SELECT * FROM ${this.tableName} WHERE ${whereClauses.join(' AND ')} LIMIT 1`;
-    const rows = await this.executeSql(sql, [id], options.uow);
+    const rows = await this.executeSql(sql, [id], uow);
     return rows[0] || null;
   }
 
@@ -80,12 +88,13 @@ class BaseRepository {
     const columns = keys.map(k => `"${k}"`).join(', ');
     const values = keys.map(k => record[k]);
 
+    const uow = resolveUow(context);
     const sql = `INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders}) RETURNING *`;
-    const rows = await this.executeSql(sql, values, context.uow);
+    const rows = await this.executeSql(sql, values, uow);
     const created = rows[0];
 
-    if (context.uow) {
-      await context.uow.recordChange({
+    if (uow && typeof uow.recordChange === 'function') {
+      await uow.recordChange({
         entity_type: this.tableName,
         entity_id: created[this.primaryKey],
         action: 'create',
@@ -99,7 +108,8 @@ class BaseRepository {
   }
 
   async update(id, data, context = {}) {
-    const current = await this.get(id, { withArchived: true, uow: context.uow });
+    const uow = resolveUow(context);
+    const current = await this.get(id, { withArchived: true, uow });
     if (!current) {
       throw new Error(`Entity ${this.tableName} #${id} not found`);
     }
@@ -142,11 +152,11 @@ class BaseRepository {
     values.push(id);
 
     const sql = `UPDATE ${this.tableName} SET ${setClauses} WHERE "${this.primaryKey}" = $${values.length} RETURNING *`;
-    const rows = await this.executeSql(sql, values, context.uow);
+    const rows = await this.executeSql(sql, values, uow);
     const updated = rows[0];
 
-    if (context.uow) {
-      await context.uow.recordChange({
+    if (uow && typeof uow.recordChange === 'function') {
+      await uow.recordChange({
         entity_type: this.tableName,
         entity_id: id,
         action: 'update',
@@ -160,18 +170,19 @@ class BaseRepository {
   }
 
   async archive(id, context = {}) {
-    const current = await this.get(id, { withArchived: true, uow: context.uow });
+    const uow = resolveUow(context);
+    const current = await this.get(id, { withArchived: true, uow });
     if (!current) {
       throw new Error(`Entity ${this.tableName} #${id} not found`);
     }
 
     if (this.isSoftDeleteActive()) {
       const sql = `UPDATE ${this.tableName} SET deleted_at = CURRENT_TIMESTAMP WHERE "${this.primaryKey}" = $1 RETURNING *`;
-      const rows = await this.executeSql(sql, [id], context.uow);
+      const rows = await this.executeSql(sql, [id], uow);
       const updated = rows[0];
 
-      if (context.uow) {
-        await context.uow.recordChange({
+      if (uow && typeof uow.recordChange === 'function') {
+        await uow.recordChange({
           entity_type: this.tableName,
           entity_id: id,
           action: 'archive',
@@ -183,10 +194,10 @@ class BaseRepository {
       return { id, archived: true };
     } else {
       const sql = `DELETE FROM ${this.tableName} WHERE "${this.primaryKey}" = $1`;
-      await this.executeSql(sql, [id], context.uow);
+      await this.executeSql(sql, [id], uow);
 
-      if (context.uow) {
-        await context.uow.recordChange({
+      if (uow && typeof uow.recordChange === 'function') {
+        await uow.recordChange({
           entity_type: this.tableName,
           entity_id: id,
           action: 'archive',
@@ -199,22 +210,27 @@ class BaseRepository {
     }
   }
 
+  async delete(id, context = {}) {
+    return await this.archive(id, context);
+  }
+
   async restore(id, context = {}) {
     if (!this.supportsSoftDelete) {
       throw new Error(`Entity ${this.tableName} does not support soft delete restore.`);
     }
 
-    const current = await this.get(id, { withArchived: true, uow: context.uow });
+    const uow = resolveUow(context);
+    const current = await this.get(id, { withArchived: true, uow });
     if (!current) {
       throw new Error(`Entity ${this.tableName} #${id} not found`);
     }
 
     const sql = `UPDATE ${this.tableName} SET deleted_at = NULL WHERE "${this.primaryKey}" = $1 RETURNING *`;
-    const rows = await this.executeSql(sql, [id], context.uow);
+    const rows = await this.executeSql(sql, [id], uow);
     const restored = rows[0];
 
-    if (context.uow) {
-      await context.uow.recordChange({
+    if (uow && typeof uow.recordChange === 'function') {
+      await uow.recordChange({
         entity_type: this.tableName,
         entity_id: id,
         action: 'restore',
