@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "target": "ES2022",
+    "downlevelIteration": true,
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -25,6 +27,7 @@
       "clsx": ["./node_modules/clsx"],
       "@/*": ["./src/*"],
       "@djadwal/core": ["../../packages/core/src/index.ts"],
+      "@djadwal/core/*": ["../../packages/core/src/*"],
       "@djadwal/ui": ["../../packages/ui/src/index.ts"],
       "@djadwal/ui/*": ["../../packages/ui/src/*"]
     }

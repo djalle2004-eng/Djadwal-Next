@@ -96,7 +96,12 @@ export const envSchema = z.object({
   FEATURE_AUTO_SCHEDULER: z
     .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
     .default(true),
-  AUTO_SCHEDULER_TIMEOUT_MS: z.coerce.number().min(1000).max(300000).default(30000)
+  AUTO_SCHEDULER_TIMEOUT_MS: z.coerce.number().min(1000).max(300000).default(30000),
+
+  // P14: Professor Academic Rank History & Archive Isolation Flags
+  FEATURE_PROFESSOR_RANK_HISTORY: z
+    .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
+    .default(true)
 });
 
 export type ValidatedEnv = z.infer<typeof envSchema>;

@@ -75,8 +75,11 @@ router.delete(['/catalog/groups/:id', '/groups/:id'], groupModule.deleteGroup);
 router.post(['/catalog/groups/:id/restore', '/groups/:id/restore'], groupModule.restoreGroup);
 
 // 7. Professors
+router.get(['/professors/ranks', '/catalog/professors/ranks'], profModule.getRanksList);
 router.get('/professors', profModule.listProfessors);
 router.post('/professors', validateBody(schemas.createProfessorSchema), profModule.createProfessor);
+router.get('/professors/:id/history', profModule.getProfessorHistory);
+router.post('/professors/:id/history', validateBody(schemas.createProfessorHistorySchema), profModule.recordProfessorHistoryEndpoint);
 router.get('/professors/:id', profModule.getProfessor);
 router.put('/professors/:id', validateBody(schemas.updateProfessorSchema), profModule.updateProfessor);
 router.delete('/professors/:id', profModule.deleteProfessor);

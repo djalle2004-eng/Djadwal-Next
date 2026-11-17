@@ -85,6 +85,7 @@ export const professors = pgTable('professors', {
   field_of_research: text('field_of_research'),
   department: varchar('department', { length: 255 }),
   profile_completed: boolean('profile_completed').default(false),
+  is_temporary: boolean('is_temporary').default(false),
   user_id: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
   version: integer('version').default(1).notNull(),
   deleted_at: timestamp('deleted_at'),
@@ -132,6 +133,7 @@ export const assignments = pgTable('assignments', {
   academic_year: text('academic_year').default(''),
   semester: text('semester').default('1'),
   specialization: text('specialization').default(''),
+  professor_rank_snapshot: varchar('professor_rank_snapshot', { length: 50 }),
   created_at: text('created_at'),
   version: integer('version').default(1).notNull(),
   updated_at: timestamp('updated_at').defaultNow()
@@ -456,6 +458,7 @@ export const scheduleVersionItems = pgTable('schedule_version_items', {
   start_time: text('start_time').notNull(),
   end_time: text('end_time').notNull(),
   session_type: text('session_type').default('lecture'),
+  professor_rank_snapshot: varchar('professor_rank_snapshot', { length: 50 }),
   item_status: varchar('item_status', { length: 20 }).default('proposed').notNull(), // 'proposed' | 'accepted' | 'rejected' | 'modified'
   note: text('note').default(''),
   metadata: text('metadata').default('{}'),
@@ -466,4 +469,24 @@ export const scheduleVersionItems = pgTable('schedule_version_items', {
   groupSlotIdx: index('idx_ver_items_group_slot').on(table.group_id, table.day_of_week, table.start_time),
   roomSlotIdx: index('idx_ver_items_room_slot').on(table.room_id, table.day_of_week, table.start_time)
 }));
+
+// 33. Professor Academic Profiles (P14 Seasonal History & Snapshots)
+export const professorAcademicProfiles = pgTable('professor_academic_profiles', {
+  id: serial('id').primaryKey(),
+  professor_id: integer('professor_id').references(() => professors.id, { onDelete: 'cascade' }).notNull(),
+  academic_year_id: integer('academic_year_id').references(() => academicYears.id),
+  academic_year: varchar('academic_year', { length: 50 }).notNull(),
+  academic_rank: varchar('academic_rank', { length: 50 }).notNull(),
+  is_temporary: boolean('is_temporary').default(false).notNull(),
+  weekly_statutory_quota: integer('weekly_statutory_quota').default(9),
+  department: varchar('department', { length: 255 }),
+  notes: text('notes').default(''),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  profYearIdx: uniqueIndex('idx_prof_academic_year').on(table.professor_id, table.academic_year),
+  rankIdx: index('idx_prof_profiles_rank').on(table.academic_rank),
+  tempIdx: index('idx_prof_profiles_temp').on(table.is_temporary)
+}));
+
 
