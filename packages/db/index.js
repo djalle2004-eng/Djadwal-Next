@@ -49,6 +49,7 @@ module.exports = {
     'preferences',
     'print_settings',
     'professors',
+    'professor_academic_profiles',
     'reconciliation_diffs',
     'rooms',
     'sandbox_snapshots',

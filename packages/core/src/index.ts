@@ -7,4 +7,4 @@ export * from './unitOfWork.js';
 export * from './repositories/index.js';
 export * from './api-schema.js';
 export * from './scheduling/index.js';
-
+export * from './constants/professor-ranks.js';

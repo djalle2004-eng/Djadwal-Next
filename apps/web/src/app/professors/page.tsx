@@ -20,6 +20,12 @@ import {
   GraduationCap,
   Building2,
   ShieldAlert,
+  History,
+  Calendar,
+  Clock,
+  Briefcase,
+  Check,
+  ChevronDown
 } from 'lucide-react';
 import {
   Button,
@@ -30,6 +36,12 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@djadwal/ui';
+import {
+  OFFICIAL_ACADEMIC_RANKS,
+  OfficialAcademicRank,
+  normalizeAcademicRank,
+  getRankDefinition,
+} from '@djadwal/core/constants/professor-ranks';
 import { api, ApiError } from '@/lib/api';
 import DeleteImpactModal from '@/components/DeleteImpactModal';
 import UndoToast from '@/components/UndoToast';
@@ -41,6 +53,8 @@ interface Professor {
   phone?: string;
   title?: string;
   academic_title?: string;
+  academic_rank?: OfficialAcademicRank | string;
+  is_temporary?: boolean;
   specialization?: string;
   department_id?: number;
   department_name?: string;
@@ -49,15 +63,17 @@ interface Professor {
   version?: number;
 }
 
-const ACADEMIC_RANKS = [
-  'أستاذ تعليم عالي (Professeur)',
-  'أستاذ محاضر أ (MCA)',
-  'أستاذ محاضر ب (MCB)',
-  'أستاذ مساعد أ (MAA)',
-  'أستاذ مساعد ب (MAB)',
-  'أستاذ مؤقت (Vacataire)',
-  'دكتور (Dr)',
-];
+interface ProfessorHistoryRecord {
+  id: number;
+  professor_id: number;
+  academic_year: string;
+  academic_rank: string;
+  rank_label_arabic?: string;
+  statutory_quota?: number;
+  is_temporary?: boolean;
+  department_id?: number;
+  created_at?: string;
+}
 
 export default function ProfessorsPage() {
   const [professors, setProfessors] = useState<Professor[]>([]);
@@ -65,7 +81,7 @@ export default function ProfessorsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [rankFilter, setRankFilter] = useState('all');
-  const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
+  const [activeTab, setActiveTab] = useState<'all' | 'permanent' | 'temporary' | 'archived'>('all');
 
   // Delete Impact Modal State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -88,11 +104,23 @@ export default function ProfessorsPage() {
     name: '',
     email: '',
     phone: '',
-    title: ACADEMIC_RANKS[1],
+    academic_rank: 'assistant_professor' as OfficialAcademicRank,
+    is_temporary: false,
     specialization: '',
+    academic_year: '2026-2027',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+
+  // History Modal State
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [historyProf, setHistoryProf] = useState<Professor | null>(null);
+  const [historyRecords, setHistoryRecords] = useState<ProfessorHistoryRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [newHistoryYear, setNewHistoryYear] = useState('');
+  const [newHistoryRank, setNewHistoryRank] = useState<OfficialAcademicRank>('lecturer_b');
+  const [newHistoryTemporary, setNewHistoryTemporary] = useState(false);
+  const [savingHistory, setSavingHistory] = useState(false);
 
   const loadProfessors = async () => {
     setLoading(true);
@@ -191,8 +219,10 @@ export default function ProfessorsPage() {
       name: '',
       email: '',
       phone: '',
-      title: ACADEMIC_RANKS[1],
+      academic_rank: 'assistant_professor',
+      is_temporary: false,
       specialization: '',
+      academic_year: '2026-2027',
     });
     setConflictError(null);
     setShowFormModal(true);
@@ -201,15 +231,68 @@ export default function ProfessorsPage() {
   // Open Edit Modal
   const handleOpenEdit = (prof: Professor) => {
     setEditingProf(prof);
+    const normalized = normalizeAcademicRank(prof.academic_rank || prof.academic_title || prof.title);
+    const isTemp = Boolean(prof.is_temporary || normalized === 'temporary');
+
     setFormData({
       name: prof.name || '',
       email: prof.email || '',
       phone: prof.phone || '',
-      title: prof.academic_title || prof.title || ACADEMIC_RANKS[1],
+      academic_rank: normalized,
+      is_temporary: isTemp,
       specialization: prof.specialization || '',
+      academic_year: '2026-2027',
     });
     setConflictError(null);
     setShowFormModal(true);
+  };
+
+  // Open History Modal
+  const handleOpenHistory = async (prof: Professor) => {
+    setHistoryProf(prof);
+    setHistoryRecords([]);
+    setHistoryLoading(true);
+    setHistoryModalOpen(true);
+    setNewHistoryYear('2025-2026');
+    const norm = normalizeAcademicRank(prof.academic_rank || prof.academic_title || prof.title);
+    setNewHistoryRank(norm);
+    setNewHistoryTemporary(Boolean(prof.is_temporary || norm === 'temporary'));
+
+    try {
+      const data = await api.get(`/professors/${prof.id}/history`);
+      if (Array.isArray(data)) {
+        setHistoryRecords(data);
+      }
+    } catch (err: any) {
+      console.error('Failed to load professor academic history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Add History Record
+  const handleAddHistoryRecord = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!historyProf || !newHistoryYear.trim()) return;
+
+    setSavingHistory(true);
+    try {
+      await api.post(`/professors/${historyProf.id}/history`, {
+        academic_year: newHistoryYear.trim(),
+        academic_rank: newHistoryRank,
+        is_temporary: newHistoryTemporary || newHistoryRank === 'temporary',
+      });
+
+      const updatedHistory = await api.get(`/professors/${historyProf.id}/history`);
+      if (Array.isArray(updatedHistory)) {
+        setHistoryRecords(updatedHistory);
+      }
+      await loadProfessors();
+    } catch (err: any) {
+      alert(err.message || 'فشل تسجيل الرتبة في هذا الموسم الأكاديمي');
+    } finally {
+      setSavingHistory(false);
+    }
   };
 
   // Save Professor (Add or Edit with OCC version and Idempotency-Key)
@@ -221,45 +304,31 @@ export default function ProfessorsPage() {
     setConflictError(null);
 
     const idempotencyKey = `prof-${editingProf ? 'edit-' + editingProf.id : 'create'}-${Date.now()}`;
+    const rankDef = getRankDefinition(formData.academic_rank);
+    const isTemp = formData.is_temporary || formData.academic_rank === 'temporary';
 
     try {
+      const payload: any = {
+        name: formData.name.trim(),
+        email: formData.email.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        academic_rank: formData.academic_rank,
+        title: rankDef.labelArabic,
+        academic_title: rankDef.labelArabic,
+        is_temporary: isTemp,
+        specialization: formData.specialization.trim() || undefined,
+        academic_year: formData.academic_year.trim() || undefined,
+      };
+
       if (editingProf) {
-        // Optimistic Locking Update
-        await api.put(
-          `/professors/${editingProf.id}`,
-          {
-            name: formData.name.trim(),
-            email: formData.email.trim() || undefined,
-            phone: formData.phone.trim() || undefined,
-            title: formData.title,
-            academic_title: formData.title,
-            specialization: formData.specialization.trim() || undefined,
-            version: editingProf.version,
-          },
-          {
-            headers: {
-              'Idempotency-Key': idempotencyKey,
-            },
-          }
-        );
+        payload.version = editingProf.version;
+        await api.put(`/professors/${editingProf.id}`, payload, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+        });
       } else {
-        // Create
-        await api.post(
-          '/professors',
-          {
-            name: formData.name.trim(),
-            email: formData.email.trim() || undefined,
-            phone: formData.phone.trim() || undefined,
-            title: formData.title,
-            academic_title: formData.title,
-            specialization: formData.specialization.trim() || undefined,
-          },
-          {
-            headers: {
-              'Idempotency-Key': idempotencyKey,
-            },
-          }
-        );
+        await api.post('/professors', payload, {
+          headers: { 'Idempotency-Key': idempotencyKey },
+        });
       }
 
       setShowFormModal(false);
@@ -279,17 +348,23 @@ export default function ProfessorsPage() {
 
   // Export to CSV
   const handleExportCSV = () => {
-    const listToExport = activeTab === 'active' ? filteredProfessors : archivedProfessors;
-    const headers = ['#', 'الاسم الكامل', 'الرتبة الأكاديمية', 'التخصص', 'البريد الإلكتروني', 'الهاتف', 'الحالة'];
-    const rows = listToExport.map((p) => [
-      p.id,
-      `"${p.name || ''}"`,
-      `"${p.academic_title || p.title || ''}"`,
-      `"${p.specialization || ''}"`,
-      `"${p.email || ''}"`,
-      `"${p.phone || ''}"`,
-      p.deleted_at ? 'مؤرشف' : 'نشط',
-    ]);
+    const listToExport = filteredProfessors;
+    const headers = ['#', 'الاسم الكامل', 'الرتبة الأكاديمية الرسمية', 'النوع', 'النصاب القانوني', 'التخصص', 'البريد الإلكتروني', 'الهاتف', 'الحالة'];
+    const rows = listToExport.map((p) => {
+      const rankDef = getRankDefinition(p.academic_rank || p.academic_title || p.title);
+      const isTemp = p.is_temporary || rankDef.isTemporary;
+      return [
+        p.id,
+        `"${p.name || ''}"`,
+        `"${rankDef.labelArabic}"`,
+        isTemp ? 'مؤقت / متعاقد' : 'دائم',
+        `${rankDef.statutoryQuotaHours} سا`,
+        `"${p.specialization || ''}"`,
+        `"${p.email || ''}"`,
+        `"${p.phone || ''}"`,
+        p.deleted_at ? 'مؤرشف' : 'نشط',
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -303,9 +378,23 @@ export default function ProfessorsPage() {
   };
 
   // Filtered List
-  const currentList = activeTab === 'active' ? professors : archivedProfessors;
   const filteredProfessors = useMemo(() => {
-    return currentList.filter((p) => {
+    let baseList = professors;
+    if (activeTab === 'archived') {
+      baseList = archivedProfessors;
+    } else if (activeTab === 'permanent') {
+      baseList = professors.filter((p) => {
+        const norm = normalizeAcademicRank(p.academic_rank || p.academic_title || p.title);
+        return !p.is_temporary && norm !== 'temporary';
+      });
+    } else if (activeTab === 'temporary') {
+      baseList = professors.filter((p) => {
+        const norm = normalizeAcademicRank(p.academic_rank || p.academic_title || p.title);
+        return p.is_temporary || norm === 'temporary';
+      });
+    }
+
+    return baseList.filter((p) => {
       const matchSearch =
         p.name?.toLowerCase().includes(search.toLowerCase()) ||
         p.email?.toLowerCase().includes(search.toLowerCase()) ||
@@ -313,11 +402,27 @@ export default function ProfessorsPage() {
         p.specialization?.toLowerCase().includes(search.toLowerCase()) ||
         p.title?.toLowerCase().includes(search.toLowerCase());
 
-      const matchRank = rankFilter === 'all' || p.academic_title === rankFilter || p.title === rankFilter;
+      const normRank = normalizeAcademicRank(p.academic_rank || p.academic_title || p.title);
+      const matchRank = rankFilter === 'all' || normRank === rankFilter;
 
       return matchSearch && matchRank;
     });
-  }, [currentList, search, rankFilter]);
+  }, [professors, archivedProfessors, activeTab, search, rankFilter]);
+
+  // Counts for tabs
+  const permanentCount = useMemo(() => {
+    return professors.filter((p) => {
+      const norm = normalizeAcademicRank(p.academic_rank || p.academic_title || p.title);
+      return !p.is_temporary && norm !== 'temporary';
+    }).length;
+  }, [professors]);
+
+  const temporaryCount = useMemo(() => {
+    return professors.filter((p) => {
+      const norm = normalizeAcademicRank(p.academic_rank || p.academic_title || p.title);
+      return p.is_temporary || norm === 'temporary';
+    }).length;
+  }, [professors]);
 
   return (
     <div className="space-y-6">
@@ -328,9 +433,9 @@ export default function ProfessorsPage() {
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">إدارة الأساتذة (Professors Management)</h1>
+            <h1 className="text-2xl font-bold text-slate-900">إدارة الأساتذة والرتب الأكاديمية (P14)</h1>
             <p className="text-sm text-slate-500">
-              قائمة هيئة التدريس والرتب العلمية وتتبع الأثر والحذف الناعم الآمن
+              القائمة المعيارية للرتب الرسمية الست، تتبع الأثر التاريخي وعزل الأرشيف الأكاديمي الموسمي
             </p>
           </div>
         </div>
@@ -374,35 +479,59 @@ export default function ProfessorsPage() {
       <Card className="border-slate-200 shadow-sm">
         <CardContent className="p-5 space-y-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            {/* Tabs: Active vs Archived */}
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl text-xs font-semibold w-full md:w-auto">
+            {/* Tabs: All / Permanent / Temporary / Archived */}
+            <div className="flex flex-wrap items-center p-1 bg-slate-100 rounded-xl text-xs font-semibold w-full md:w-auto gap-1">
               <button
                 type="button"
-                onClick={() => setActiveTab('active')}
-                className={`flex-1 md:flex-none px-4 py-2 rounded-lg transition-all ${
-                  activeTab === 'active'
+                onClick={() => setActiveTab('all')}
+                className={`px-3.5 py-1.5 rounded-lg transition-all ${
+                  activeTab === 'all'
                     ? 'bg-white text-indigo-700 shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                الأساتذة النشطون ({professors.length})
+                كافة الأساتذة ({professors.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('permanent')}
+                className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'permanent'
+                    ? 'bg-white text-blue-700 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                <span>الأساتذة الدائمون ({permanentCount})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('temporary')}
+                className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  activeTab === 'temporary'
+                    ? 'bg-white text-amber-700 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>الأساتذة المؤقتون / متعاقدون ({temporaryCount})</span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('archived')}
-                className={`flex-1 md:flex-none px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
                   activeTab === 'archived'
                     ? 'bg-white text-rose-700 shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 <Archive className="w-3.5 h-3.5" />
-                <span>المؤرشفات / المحذوفات ({archivedProfessors.length})</span>
+                <span>سلة المؤرشفات ({archivedProfessors.length})</span>
               </button>
             </div>
 
             {/* Search Box */}
-            <div className="relative w-full md:w-72">
+            <div className="relative w-full md:w-64">
               <Search className="absolute right-3.5 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
@@ -414,16 +543,16 @@ export default function ProfessorsPage() {
             </div>
 
             {/* Rank Filter */}
-            <div className="w-full md:w-64">
+            <div className="w-full md:w-60">
               <select
                 value={rankFilter}
                 onChange={(e) => setRankFilter(e.target.value)}
                 className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               >
-                <option value="all">كافة الرتب الأكاديمية</option>
-                {ACADEMIC_RANKS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
+                <option value="all">كافة الرتب الأكاديمية (6)</option>
+                {OFFICIAL_ACADEMIC_RANKS.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.labelArabic} ({r.statutoryQuotaHours} سا)
                   </option>
                 ))}
               </select>
@@ -440,105 +569,156 @@ export default function ProfessorsPage() {
               <tr>
                 <th className="py-3.5 px-4 font-bold w-12 text-center">#</th>
                 <th className="py-3.5 px-4 font-bold">اسم الأستاذ</th>
-                <th className="py-3.5 px-4 font-bold">الرتبة العلمية</th>
+                <th className="py-3.5 px-4 font-bold">الرتبة الأكاديمية الرسمية</th>
+                <th className="py-3.5 px-4 font-bold text-center">النصاب القانوني</th>
                 <th className="py-3.5 px-4 font-bold">التخصص</th>
                 <th className="py-3.5 px-4 font-bold">البريد الإلكتروني</th>
                 <th className="py-3.5 px-4 font-bold">الهاتف</th>
                 <th className="py-3.5 px-4 font-bold text-center w-20">الإصدار (v)</th>
-                <th className="py-3.5 px-4 font-bold text-center w-28">الإجراءات</th>
+                <th className="py-3.5 px-4 font-bold text-center w-36">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     <span>جاري تحميل بيانات هيئة التدريس...</span>
                   </td>
                 </tr>
               ) : filteredProfessors.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    {activeTab === 'active'
-                      ? 'لا يوجد أساتذة مطابقين لمعايير البحث الحالية.'
-                      : 'سلة المؤرشفات فارغة؛ لا توجد سجلات محذوفة ناعماً.'}
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                    {activeTab === 'archived'
+                      ? 'سلة المؤرشفات فارغة؛ لا توجد سجلات محذوفة ناعماً.'
+                      : 'لا يوجد أساتذة مطابقين لمعايير البحث الحالية.'}
                   </td>
                 </tr>
               ) : (
-                filteredProfessors.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3 px-4 font-mono text-slate-400 text-center">{p.id}</td>
-                    <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 font-bold flex items-center justify-center text-[10px]">
-                        {p.name.slice(0, 1)}
-                      </div>
-                      <span>{p.name}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                        {p.academic_title || p.title || 'أستاذ'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">{p.specialization || '—'}</td>
-                    <td className="py-3 px-4 font-mono text-slate-600">
-                      {p.email ? (
-                        <span className="inline-flex items-center gap-1.5 text-slate-700">
-                          <Mail className="h-3 w-3 text-slate-400" />
-                          <span>{p.email}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-600">
-                      {p.phone ? (
-                        <span className="inline-flex items-center gap-1 text-slate-700">
-                          <Phone className="h-3 w-3 text-slate-400" />
-                          <span>{p.phone}</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-400 text-center">
-                      v{p.version || 1}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {activeTab === 'active' ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEdit(p)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                              title="تعديل بيانات الأستاذ"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDelete(p)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="فحص الأثر وحذف الأستاذ ناعماً"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRestore(p)}
-                            className="text-[11px] py-1 px-2.5 h-auto text-emerald-700 hover:bg-emerald-50 border-emerald-300 gap-1"
+                filteredProfessors.map((p) => {
+                  const rankDef = getRankDefinition(p.academic_rank || p.academic_title || p.title);
+                  const isTemp = Boolean(p.is_temporary || rankDef.isTemporary);
+
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-mono text-slate-400 text-center">{p.id}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
+                        <div
+                          className={`w-7 h-7 rounded-full font-bold flex items-center justify-center text-[10px] ${
+                            isTemp
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-indigo-50 text-indigo-700'
+                          }`}
+                        >
+                          {p.name.slice(0, 1)}
+                        </div>
+                        <div className="flex flex-col">
+                          <span>{p.name}</span>
+                          {isTemp && (
+                            <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5 inline" /> أستاذ(ة) مؤقت(ة)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-semibold border ${
+                              isTemp
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : rankDef.key === 'professor'
+                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                : rankDef.key === 'lecturer_a'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
                           >
-                            <RotateCcw className="w-3 h-3 text-emerald-600" />
-                            <span>استرجاع</span>
-                          </Button>
+                            {rankDef.labelArabic}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-sans">({rankDef.labelFrench})</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono">
+                        {isTemp ? (
+                          <span className="inline-block px-2 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-bold border border-amber-200">
+                            0 سا (تعاقد)
+                          </span>
+                        ) : (
+                          <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold">
+                            {rankDef.statutoryQuotaHours} سا / أسبوع
+                          </span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3 px-4 text-slate-600">{p.specialization || '—'}</td>
+                      <td className="py-3 px-4 font-mono text-slate-600">
+                        {p.email ? (
+                          <span className="inline-flex items-center gap-1.5 text-slate-700">
+                            <Mail className="h-3 w-3 text-slate-400" />
+                            <span>{p.email}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-600">
+                        {p.phone ? (
+                          <span className="inline-flex items-center gap-1 text-slate-700">
+                            <Phone className="h-3 w-3 text-slate-400" />
+                            <span>{p.phone}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-400 text-center">
+                        v{p.version || 1}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {activeTab !== 'archived' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenHistory(p)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                title="عرض الأرشيف والتاريخ الأكاديمي والترقيات الموسمية"
+                              >
+                                <History className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEdit(p)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                title="تعديل بيانات الأستاذ والرتبة"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDelete(p)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="فحص الأثر وحذف الأستاذ ناعماً"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRestore(p)}
+                              className="text-[11px] py-1 px-2.5 h-auto text-emerald-700 hover:bg-emerald-50 border-emerald-300 gap-1"
+                            >
+                              <RotateCcw className="w-3 h-3 text-emerald-600" />
+                              <span>استرجاع</span>
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -550,10 +730,10 @@ export default function ProfessorsPage() {
         <div className="p-6 space-y-4 max-w-lg w-full bg-white rounded-2xl text-start">
           <DialogTitle className="text-lg font-bold text-slate-900 border-b pb-3 flex items-center gap-2">
             <Users className="w-5 h-5 text-indigo-600" />
-            <span>{editingProf ? 'تعديل بيانات الأستاذ' : 'إضافة أستاذ جديد'}</span>
+            <span>{editingProf ? 'تعديل بيانات الأستاذ والرتبة الرسمية' : 'إضافة أستاذ جديد'}</span>
           </DialogTitle>
           <DialogDescription className="sr-only">
-            إدخال وتعديل بيانات الأستاذ مع القفل التفاؤلي
+            إدخال وتعديل بيانات الأستاذ مع القفل التفاؤلي والرتبة المعيارية
           </DialogDescription>
 
           {conflictError && (
@@ -575,20 +755,30 @@ export default function ProfessorsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">الرتبة الأكاديمية</label>
+                <label className="block font-bold text-slate-700 mb-1">الرتبة الأكاديمية الرسمية *</label>
                 <select
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  value={formData.academic_rank}
+                  onChange={(e) => {
+                    const rank = e.target.value as OfficialAcademicRank;
+                    setFormData({
+                      ...formData,
+                      academic_rank: rank,
+                      is_temporary: rank === 'temporary' ? true : formData.is_temporary,
+                    });
+                  }}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
                 >
-                  {ACADEMIC_RANKS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
+                  {OFFICIAL_ACADEMIC_RANKS.map((r) => (
+                    <option key={r.key} value={r.key}>
+                      {r.labelArabic} — {r.statutoryQuotaHours} سا ({r.labelFrench})
                     </option>
                   ))}
                 </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {getRankDefinition(formData.academic_rank).descriptionArabic}
+                </p>
               </div>
 
               <div>
@@ -599,6 +789,45 @@ export default function ProfessorsPage() {
                   onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
                   placeholder="مثال: اقتصاد نقدي وبنكي"
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+            </div>
+
+            {/* Temporary Teacher Toggle & Academic Year */}
+            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-800 block text-xs">حالة الأستاذ: مؤقت / متعاقد (Vacataire)</span>
+                  <span className="text-[10px] text-slate-500">
+                    الأساتذة المؤقتون يُعزل نصابهم القانوني (0 سا) وتُحتسب كافة ساعاتهم كأعباء تدريس تعاقدية
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={formData.is_temporary || formData.academic_rank === 'temporary'}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setFormData({
+                      ...formData,
+                      is_temporary: checked,
+                      academic_rank: checked && formData.academic_rank !== 'temporary' ? 'temporary' : formData.academic_rank,
+                    });
+                  }}
+                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-3">
+                <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  الموسم الأكاديمي الفعّال للملف:
+                </span>
+                <input
+                  type="text"
+                  value={formData.academic_year}
+                  onChange={(e) => setFormData({ ...formData, academic_year: e.target.value })}
+                  placeholder="2026-2027"
+                  className="w-32 px-2.5 py-1 border border-slate-200 rounded-lg text-xs font-mono text-center bg-white"
                 />
               </div>
             </div>
@@ -652,7 +881,145 @@ export default function ProfessorsPage() {
         </div>
       </Dialog>
 
-      {/* 5. Delete Impact Assessment Modal */}
+      {/* 5. Academic History & Promotion Isolation Modal */}
+      <Dialog open={historyModalOpen} onClose={() => setHistoryModalOpen(false)} size="lg">
+        <div className="p-6 space-y-5 max-w-xl w-full bg-white rounded-2xl text-start">
+          <DialogTitle className="text-lg font-bold text-slate-900 border-b pb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-indigo-600" />
+              <span>الأرشيف الأكاديمي وسجل الترقيات التاريخية</span>
+            </div>
+            {historyProf && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-100">
+                {historyProf.name}
+              </span>
+            )}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-slate-500">
+            تاريخية الرتب الأكاديمية تضمن بقاء الجداول القديمة محفوظة برتبة الأستاذ في ذلك الموسم وتمنع تشويه حساب النصاب بأثر رجعي.
+          </DialogDescription>
+
+          {/* Chronological History List */}
+          <div className="space-y-3">
+            <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+              <span>المواسم الأكاديمية المسجلة:</span>
+            </h4>
+
+            {historyLoading ? (
+              <div className="py-6 text-center text-slate-400 text-xs">
+                <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-indigo-500" />
+                <span>جاري استرجاع الأرشيف التاريخي للأستاذ...</span>
+              </div>
+            ) : historyRecords.length === 0 ? (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-center text-xs">
+                لا توجد سجلات تاريخية مخصصة لهذا الأستاذ بعد؛ يُعتمد الملف الحالي لكافة المواسم.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
+                {historyRecords.map((rec) => {
+                  const def = getRankDefinition(rec.academic_rank);
+                  return (
+                    <div key={rec.id} className="p-3.5 flex items-center justify-between text-xs hover:bg-slate-50">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                          {rec.academic_year}
+                        </span>
+                        <div>
+                          <div className="font-bold text-slate-900">{rec.rank_label_arabic || def.labelArabic}</div>
+                          <div className="text-[10px] text-slate-400">{def.labelFrench}</div>
+                        </div>
+                      </div>
+                      <div className="text-end">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                            rec.is_temporary || def.isTemporary
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}
+                        >
+                          نصاب: {rec.statutory_quota ?? def.statutoryQuotaHours} سا
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Add History Record Form */}
+          <form onSubmit={handleAddHistoryRecord} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 text-xs">
+            <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+              <Plus className="w-3.5 h-3.5 text-indigo-600" />
+              <span>تسجيل ترقية أو رتبة لموسم أكاديمي محدد:</span>
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الموسم الأكاديمي *</label>
+                <input
+                  type="text"
+                  required
+                  value={newHistoryYear}
+                  onChange={(e) => setNewHistoryYear(e.target.value)}
+                  placeholder="مثال: 2024-2025"
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الرتبة في هذا الموسم *</label>
+                <select
+                  value={newHistoryRank}
+                  onChange={(e) => {
+                    const r = e.target.value as OfficialAcademicRank;
+                    setNewHistoryRank(r);
+                    if (r === 'temporary') setNewHistoryTemporary(true);
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white font-medium"
+                >
+                  {OFFICIAL_ACADEMIC_RANKS.map((r) => (
+                    <option key={r.key} value={r.key}>
+                      {r.labelArabic} ({r.statutoryQuotaHours} سا)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newHistoryTemporary || newHistoryRank === 'temporary'}
+                  onChange={(e) => setNewHistoryTemporary(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                />
+                <span className="text-slate-700 font-medium">أستاذ مؤقت / متعاقد في ذلك الموسم</span>
+              </label>
+
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                disabled={savingHistory}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1 text-xs"
+              >
+                {savingHistory ? 'جارٍ الحفظ...' : 'تثبيت السجل التاريخي'}
+              </Button>
+            </div>
+          </form>
+
+          <div className="pt-2 border-t border-slate-100 flex justify-end">
+            <Button variant="outline" size="sm" type="button" onClick={() => setHistoryModalOpen(false)}>
+              إغلاق
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* 6. Delete Impact Assessment Modal */}
       <DeleteImpactModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
@@ -663,7 +1030,7 @@ export default function ProfessorsPage() {
         isLoading={isDeleting}
       />
 
-      {/* 6. Undo Notification Toast */}
+      {/* 7. Undo Notification Toast */}
       <UndoToast
         show={undoToast.show}
         message={undoToast.message}

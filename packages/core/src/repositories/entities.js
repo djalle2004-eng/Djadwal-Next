@@ -237,8 +237,20 @@ class AssignmentsRepository extends BaseRepository {
   }
 }
 
+class ProfessorAcademicProfilesRepository extends BaseRepository {
+  constructor() {
+    super({
+      tableName: 'professor_academic_profiles',
+      primaryKey: 'id',
+      supportsSoftDelete: false,
+      supportsOptimisticLock: false
+    });
+  }
+}
+
 const departmentsRepository = new DepartmentsRepository();
 const professorsRepository = new ProfessorsRepository();
+const professorAcademicProfilesRepository = new ProfessorAcademicProfilesRepository();
 const coursesRepository = new CoursesRepository();
 const roomsRepository = new RoomsRepository();
 const groupsRepository = new GroupsRepository();
@@ -251,6 +263,7 @@ const academicYearsRepository = new AcademicYearsRepository();
 module.exports = {
   DepartmentsRepository,
   ProfessorsRepository,
+  ProfessorAcademicProfilesRepository,
   CoursesRepository,
   RoomsRepository,
   GroupsRepository,
@@ -261,6 +274,7 @@ module.exports = {
   AssignmentsRepository,
   departmentsRepository,
   professorsRepository,
+  professorAcademicProfilesRepository,
   coursesRepository,
   roomsRepository,
   groupsRepository,

@@ -52,21 +52,27 @@ import {
 } from '@djadwal/ui';
 
 import { api } from '@/lib/api';
+import {
+  OFFICIAL_ACADEMIC_RANKS,
+  OfficialAcademicRank,
+  normalizeAcademicRank,
+  getRankDefinition,
+} from '@djadwal/core/constants/professor-ranks';
 
 // Pedagogical Conversion Constants (Standard Algerian Higher Education: Decree 08-130)
 const LECTURE_COEFFICIENT = 2.25; // 1.5h actual lecture slot = 2.25h TD-equivalent (HETD)
 const TD_TP_COEFFICIENT = 1.50;  // 1.5h actual TD/TP slot = 1.50h TD-equivalent (HETD)
 
-// Standard Statutory Teaching Quotas (النصاب القانوني الأسبوعي بالساعات المكافئة)
+// Standard Statutory Teaching Quotas (النصاب القانوني الأسبوعي بالساعات المكافئة - P14)
 const RANK_QUOTAS: Record<string, { label: string; quota: number }> = {
-  'PR': { label: 'أستاذ تعليم عالي (Professeur)', quota: 9.0 },
-  'MCA': { label: 'أستاذ محاضر أ (Maître de Conférences A)', quota: 9.0 },
-  'MCB': { label: 'أستاذ محاضر ب (Maître de Conférences B)', quota: 9.0 },
-  'MAA': { label: 'أستاذ مساعد أ (Maître Assistant A)', quota: 9.0 },
-  'MAB': { label: 'أستاذ مساعد ب (Maître Assistant B)', quota: 12.0 },
-  'VAC': { label: 'أستاذ مؤقت / مشارك (Vacataire)', quota: 0.0 },
+  'PR': { label: 'أستاذ (Professeur)', quota: 6.0 },
+  'MCA': { label: 'أستاذ محاضر أ (MCA)', quota: 9.0 },
+  'MCB': { label: 'أستاذ محاضر ب (MCB)', quota: 9.0 },
+  'MAA': { label: 'أستاذ مساعد (Maître Assistant)', quota: 12.0 },
+  'MAB': { label: 'أستاذ مساعد ب (MAB)', quota: 12.0 },
+  'VAC': { label: 'أستاذ(ة) مؤقت(ة) / متعاقد (Vacataire)', quota: 0.0 },
   'DOC': { label: 'دكتور باحث (Docteur)', quota: 9.0 },
-  'DEFAULT': { label: 'أستاذ دائم', quota: 9.0 }
+  'DEFAULT': { label: 'أستاذ مساعد', quota: 12.0 }
 };
 
 // Days of the week in Djadwal (0 = Saturday, 1 = Sunday, ..., 6 = Friday)
@@ -79,33 +85,31 @@ const DAYS = [
   { id: 5, name: 'الخميس' }
 ];
 
-// Helper to determine rank quota from professor title / academic_title
-function getProfessorQuota(title?: string, academicTitle?: string): { rankKey: string; rankLabel: string; quota: number } {
-  const combined = `${title || ''} ${academicTitle || ''}`.trim().toLowerCase();
-
-  if (combined.includes('professeur') || combined.includes('تعليم عالي') || combined.includes('أ.د') || combined.includes('prof')) {
-    return { rankKey: 'PR', rankLabel: RANK_QUOTAS['PR'].label, quota: RANK_QUOTAS['PR'].quota };
-  }
-  if (combined.includes('محاضر أ') || combined.includes('mca') || combined.includes('associate professor')) {
-    return { rankKey: 'MCA', rankLabel: RANK_QUOTAS['MCA'].label, quota: RANK_QUOTAS['MCA'].quota };
-  }
-  if (combined.includes('محاضر ب') || combined.includes('mcb') || combined.includes('assistant professor')) {
-    return { rankKey: 'MCB', rankLabel: RANK_QUOTAS['MCB'].label, quota: RANK_QUOTAS['MCB'].quota };
-  }
-  if (combined.includes('مساعد أ') || combined.includes('maa') || combined.includes('lecturer')) {
-    return { rankKey: 'MAA', rankLabel: RANK_QUOTAS['MAA'].label, quota: RANK_QUOTAS['MAA'].quota };
-  }
-  if (combined.includes('مساعد ب') || combined.includes('mab') || combined.includes('assistant lecturer')) {
-    return { rankKey: 'MAB', rankLabel: RANK_QUOTAS['MAB'].label, quota: RANK_QUOTAS['MAB'].quota };
-  }
-  if (combined.includes('مؤقت') || combined.includes('مشارك') || combined.includes('vacataire') || combined.includes('contractuel')) {
-    return { rankKey: 'VAC', rankLabel: RANK_QUOTAS['VAC'].label, quota: RANK_QUOTAS['VAC'].quota };
-  }
-  if (combined.includes('دكتور') || combined.includes('dr')) {
-    return { rankKey: 'DOC', rankLabel: RANK_QUOTAS['DOC'].label, quota: RANK_QUOTAS['DOC'].quota };
+// Helper to determine rank quota from professor title / academic_title / academic_rank (P14 Standard)
+function getProfessorQuota(
+  title?: string,
+  academicTitle?: string,
+  academicRank?: string,
+  isTemporary?: boolean
+): { rankKey: string; rankLabel: string; quota: number; isTemporary: boolean } {
+  if (isTemporary || academicRank === 'temporary') {
+    return {
+      rankKey: 'temporary',
+      rankLabel: 'أستاذ(ة) مؤقت(ة)',
+      quota: 0.0,
+      isTemporary: true
+    };
   }
 
-  return { rankKey: 'DEFAULT', rankLabel: RANK_QUOTAS['DEFAULT'].label, quota: RANK_QUOTAS['DEFAULT'].quota };
+  const norm = normalizeAcademicRank(academicRank || academicTitle || title);
+  const def = getRankDefinition(norm);
+
+  return {
+    rankKey: def.key,
+    rankLabel: def.labelArabic,
+    quota: def.statutoryQuotaHours,
+    isTemporary: def.isTemporary
+  };
 }
 
 // Translate academic level code (L1 -> جذع مشترك, etc.)
@@ -125,6 +129,8 @@ interface Professor {
   name: string;
   title?: string;
   academic_title?: string;
+  academic_rank?: string;
+  is_temporary?: boolean;
   email?: string;
   phone?: string;
   department_id?: number;
@@ -185,6 +191,7 @@ interface ProfessorWorkloadSummary {
   rankKey: string;
   rankLabel: string;
   statutoryQuota: number;
+  isTemporary: boolean;
   lectureCount: number;
   tdCount: number;
   totalSessions: number;
@@ -236,7 +243,7 @@ export default function ProfessorWorkloadPage() {
     try {
       setRefreshing(true);
       const [profData, courseData, groupData, deptData, assignData, psData] = await Promise.all([
-        api.get<Professor[]>('/professors?limit=500').catch(() => []),
+        api.get<Professor[]>(`/professors?academicYear=${encodeURIComponent(academicYear)}&limit=500`).catch(() => []),
         api.get<Course[]>('/catalog/courses?limit=500').catch(() => []),
         api.get<Group[]>('/catalog/groups?limit=500').catch(() => []),
         api.get<any[]>('/catalog/departments').catch(() => []),
@@ -268,7 +275,12 @@ export default function ProfessorWorkloadPage() {
 
     const summaries: ProfessorWorkloadSummary[] = professors.map((professor) => {
       const profAssignments = assignments.filter((a) => a.professor_id === professor.id);
-      const { rankKey, rankLabel, quota } = getProfessorQuota(professor.title, professor.academic_title);
+      const { rankKey, rankLabel, quota, isTemporary } = getProfessorQuota(
+        professor.title,
+        professor.academic_title,
+        professor.academic_rank,
+        professor.is_temporary
+      );
 
       const courseMap = new Map<string, CourseWorkloadBreakdown>();
       const dayMap: Record<string, { count: number; hours: number }> = {};
@@ -338,7 +350,11 @@ export default function ProfessorWorkloadPage() {
       let overtimeHours = 0;
       let underloadHours = 0;
 
-      if (totalWeeklyHours === 0) {
+      if (isTemporary || rankKey === 'temporary' || quota === 0) {
+        status = totalWeeklyHours === 0 ? 'unassigned' : 'complete';
+        overtimeHours = 0;
+        underloadHours = 0;
+      } else if (totalWeeklyHours === 0) {
         status = 'unassigned';
         underloadHours = quota;
       } else if (totalWeeklyHours > quota) {
@@ -356,6 +372,7 @@ export default function ProfessorWorkloadPage() {
         rankKey,
         rankLabel,
         statutoryQuota: quota,
+        isTemporary,
         lectureCount: totalLectures,
         tdCount: totalTDs,
         totalSessions: totalLectures + totalTDs,
@@ -379,6 +396,8 @@ export default function ProfessorWorkloadPage() {
   // Global Faculty Statistics & KPIs
   const kpis = useMemo(() => {
     const totalProfessors = calculatedWorkloads.length;
+    const permanentProfessors = calculatedWorkloads.filter((w) => !w.isTemporary).length;
+    const temporaryProfessors = calculatedWorkloads.filter((w) => w.isTemporary).length;
     const totalWeeklyHours = calculatedWorkloads.reduce((acc, curr) => acc + curr.totalWeeklyHours, 0);
     const totalOvertimeHours = calculatedWorkloads.reduce((acc, curr) => acc + curr.overtimeHours, 0);
 
@@ -389,6 +408,8 @@ export default function ProfessorWorkloadPage() {
 
     return {
       totalProfessors,
+      permanentProfessors,
+      temporaryProfessors,
       totalWeeklyHours,
       totalOvertimeHours,
       overtimeCount,
@@ -759,7 +780,7 @@ export default function ProfessorWorkloadPage() {
           <Card className="p-3 text-center bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="text-xs text-slate-500 mb-1">إجمالي الأساتذة</div>
             <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{kpis.totalProfessors}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">مسجلين في النظام</div>
+            <div className="text-[10px] text-slate-500 font-semibold mt-0.5">{kpis.permanentProfessors} دائم | {kpis.temporaryProfessors} متعاقد</div>
           </Card>
 
           <Card className="p-3 text-center bg-blue-50/40 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/60 shadow-sm">

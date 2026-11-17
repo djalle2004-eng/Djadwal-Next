@@ -71,7 +71,9 @@ const createProfessorSchema = z.object({
   email: z.string().email('البريد الإلكتروني غير صالح').optional().nullable(),
   phone: z.string().trim().optional().nullable(),
   title: z.string().trim().optional().nullable(),
-  academic_title: z.string().trim().optional().nullable()
+  academic_title: z.string().trim().optional().nullable(),
+  academic_rank: z.string().trim().optional().nullable(),
+  is_temporary: z.boolean().optional().default(false)
 });
 
 const updateProfessorSchema = z.object({
@@ -80,7 +82,18 @@ const updateProfessorSchema = z.object({
   phone: z.string().trim().optional().nullable(),
   title: z.string().trim().optional().nullable(),
   academic_title: z.string().trim().optional().nullable(),
+  academic_rank: z.string().trim().optional().nullable(),
+  is_temporary: z.boolean().optional(),
   version: z.coerce.number().int().optional()
+});
+
+const createProfessorHistorySchema = z.object({
+  academic_year: z.string().min(4, 'السنة الجامعية مطلوبة (مثلاً 2026-2027)'),
+  academic_year_id: z.coerce.number().int().optional().nullable(),
+  academic_rank: z.string().trim().min(1, 'الرتبة الأكاديمية مطلوبة'),
+  is_temporary: z.boolean().optional().default(false),
+  department: z.string().optional().nullable(),
+  notes: z.string().optional().default('')
 });
 
 const bulkImportProfessorsSchema = z.object({
@@ -240,6 +253,7 @@ module.exports = {
   updateGroupSchema,
   createProfessorSchema,
   updateProfessorSchema,
+  createProfessorHistorySchema,
   bulkImportProfessorsSchema,
   createAssignmentSchema,
   updateAssignmentSchema,

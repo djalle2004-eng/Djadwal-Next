@@ -33,7 +33,7 @@ export function formatV1Error(
 // ==========================================
 
 export const createDepartmentSchema = z.object({
-  name: z.string({ required_error: 'اسم القسم مطلوب' }).trim().min(2, 'اسم القسم يجب أن لا يقل عن حرفين').max(150),
+  name: z.string().trim().min(2, 'اسم القسم يجب أن لا يقل عن حرفين').max(150),
   code: z.string().trim().max(50).optional().nullable()
 });
 
@@ -43,7 +43,7 @@ export const updateDepartmentSchema = z.object({
 });
 
 export const createRoomSchema = z.object({
-  name: z.string({ required_error: 'اسم القاعة مطلوب' }).trim().min(1, 'اسم القاعة مطلوب').max(100),
+  name: z.string().trim().min(1, 'اسم القاعة مطلوب').max(100),
   capacity: z.coerce.number().int().min(0, 'السعة يجب أن تكون رقماً موجباً').default(0)
 });
 
@@ -54,22 +54,22 @@ export const updateRoomSchema = z.object({
 });
 
 export const createCourseSchema = z.object({
-  name: z.string({ required_error: 'اسم المقياس مطلوب' }).trim().min(1, 'اسم المقياس مطلوب').max(150),
+  name: z.string().trim().min(1, 'اسم المقياس مطلوب').max(150),
   code: z.string().trim().max(50).optional().nullable(),
   department_id: z.coerce.number().int().optional().nullable(),
-  metadata: z.union([z.string(), z.record(z.any())]).optional()
+  metadata: z.union([z.string(), z.record(z.string(), z.any())]).optional()
 });
 
 export const updateCourseSchema = z.object({
   name: z.string().trim().min(1).max(150).optional(),
   code: z.string().trim().max(50).optional().nullable(),
   department_id: z.coerce.number().int().optional().nullable(),
-  metadata: z.union([z.string(), z.record(z.any())]).optional(),
+  metadata: z.union([z.string(), z.record(z.string(), z.any())]).optional(),
   version: z.coerce.number().int().optional()
 });
 
 export const createGroupSchema = z.object({
-  name: z.string({ required_error: 'اسم الفوج مطلوب' }).trim().min(1, 'اسم الفوج مطلوب').max(100),
+  name: z.string().trim().min(1, 'اسم الفوج مطلوب').max(100),
   specialization: z.string().trim().max(100).optional().nullable(),
   department_id: z.coerce.number().int().optional().nullable(),
   parent_group_id: z.coerce.number().int().optional().nullable(),
@@ -88,11 +88,13 @@ export const updateGroupSchema = z.object({
 });
 
 export const createProfessorSchema = z.object({
-  name: z.string({ required_error: 'اسم الأستاذ مطلوب' }).trim().min(2, 'اسم الأستاذ يجب أن لا يقل عن حرفين'),
+  name: z.string().trim().min(2, 'اسم الأستاذ يجب أن لا يقل عن حرفين'),
   email: z.string().email('البريد الإلكتروني غير صالح').optional().nullable(),
   phone: z.string().trim().optional().nullable(),
   title: z.string().trim().optional().nullable(),
-  academic_title: z.string().trim().optional().nullable()
+  academic_title: z.string().trim().optional().nullable(),
+  academic_rank: z.string().trim().optional().nullable(),
+  is_temporary: z.boolean().optional().default(false)
 });
 
 export const updateProfessorSchema = z.object({
@@ -101,7 +103,18 @@ export const updateProfessorSchema = z.object({
   phone: z.string().trim().optional().nullable(),
   title: z.string().trim().optional().nullable(),
   academic_title: z.string().trim().optional().nullable(),
+  academic_rank: z.string().trim().optional().nullable(),
+  is_temporary: z.boolean().optional(),
   version: z.coerce.number().int().optional()
+});
+
+export const createProfessorHistorySchema = z.object({
+  academic_year: z.string().min(4, 'السنة الجامعية مطلوبة (مثلاً 2026-2027)'),
+  academic_year_id: z.coerce.number().int().optional().nullable(),
+  academic_rank: z.string().trim().min(1, 'الرتبة الأكاديمية مطلوبة'),
+  is_temporary: z.boolean().optional().default(false),
+  department: z.string().optional().nullable(),
+  notes: z.string().optional().default('')
 });
 
 export const bulkImportProfessorsSchema = z.object({
@@ -225,7 +238,7 @@ export const transitionVersionSchema = z.object({
 export const updateVersionItemDecisionSchema = z.object({
   decision: z.enum(['accepted', 'rejected', 'modified', 'proposed']),
   note: z.string().optional(),
-  updated_data: z.record(z.any()).optional()
+  updated_data: z.record(z.string(), z.any()).optional()
 });
 
 export const simulateImpactSchema = z.object({
