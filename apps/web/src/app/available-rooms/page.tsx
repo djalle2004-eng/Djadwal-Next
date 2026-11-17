@@ -59,6 +59,7 @@ import {
 } from '@djadwal/ui';
 
 import { api } from '@/lib/api';
+import { ProfessorCombobox } from '@/components/ProfessorCombobox';
 
 // =============================================================================
 // TYPES & SYSTEM CONSTANTS
@@ -468,6 +469,17 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
     const profIds = new Set(extraSessions.map(s => s.professor_id));
     return professors.filter(p => profIds.has(p.id));
   }, [extraSessions, professors]);
+
+  // Count of active extra sessions per professor (for combobox badges)
+  const extraSessionsCountMap = useMemo(() => {
+    const map = new Map<number, number>();
+    extraSessions.forEach(s => {
+      if (s.is_archived !== 1) {
+        map.set(s.professor_id, (map.get(s.professor_id) || 0) + 1);
+      }
+    });
+    return map;
+  }, [extraSessions]);
 
   // Filtered professors for auto-search
   const filteredProfessorsSearch = useMemo(() => {
@@ -1112,7 +1124,9 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-16 font-sans text-slate-900 dark:text-slate-100" dir="rtl">
-      {/* Top Header Banner */}
+      {/* Main Interactive Screen - Isolated & Suppressed During Print */}
+      <div id="available-rooms-main-screen" className="available-rooms-interactive no-print print:hidden">
+        {/* Top Header Banner */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -2312,6 +2326,7 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
           </TabContent>
         </Tabs>
       </div>
+      </div>
 
       {/* ===================================================================== */}
       {/* MODAL 1: BOOKING & EDIT DIALOG (Available everywhere)                  */}
@@ -2347,22 +2362,17 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
             ) : null}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Professor */}
+              {/* Professor Searchable Combobox */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  الأستاذ المعني *
-                </label>
-                <select
-                  value={selectedProfessor}
-                  onChange={(e) => setSelectedProfessor(e.target.value ? Number(e.target.value) : '')}
+                <ProfessorCombobox
+                  label="الأستاذ المعني"
                   required
-                  className="w-full py-2 px-3 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
-                >
-                  <option value="">-- اختر الأستاذ --</option>
-                  {professors.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} {p.title ? `(${p.title})` : ''}</option>
-                  ))}
-                </select>
+                  professors={professors}
+                  value={selectedProfessor}
+                  onChange={(id) => setSelectedProfessor(id ? Number(id) : '')}
+                  placeholder="ابحث باسم الأستاذ لتحديده..."
+                  allowAll={false}
+                />
               </div>
 
               {/* Course */}
@@ -2602,19 +2612,18 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
                 </select>
               </div>
 
-              {/* Professor */}
+              {/* Professor Searchable Combobox */}
               <div>
-                <label className="block text-xs font-semibold mb-1">الأستاذ</label>
-                <select
+                <ProfessorCombobox
+                  label="الأستاذ"
+                  professors={professors}
                   value={announcementProfessor}
-                  onChange={(e) => setAnnouncementProfessor(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full py-2 px-3 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl"
-                >
-                  <option value="">جميع الأساتذة</option>
-                  {professorsWithExtraSessions.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
+                  onChange={(id) => setAnnouncementProfessor(id)}
+                  placeholder="ابحث باسم الأستاذ لتصفية الحصص..."
+                  allowAll={true}
+                  allLabel="جميع الأساتذة (عرض كافة الحصص)"
+                  extraSessionsCountMap={extraSessionsCountMap}
+                />
               </div>
 
               {/* Start Date */}
@@ -2779,52 +2788,57 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
       {/* ===================================================================== */}
       {/* MODAL 6: PRINT PREVIEW SUITE (Official Algerian A4 Layout)             */}
       {/* ===================================================================== */}
-      <Dialog open={printModalOpen} onClose={() => setPrintModalOpen(false)}>
-        <div className="p-6 text-start max-w-4xl" dir="rtl">
-          <div className="flex items-center justify-between border-b pb-3 mb-4">
-            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+      <Dialog
+        open={printModalOpen}
+        onClose={() => setPrintModalOpen(false)}
+        size="xl"
+        className="max-w-5xl max-h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl print:max-h-none print:max-w-none print:p-0 print:border-none print:bg-white print:overflow-visible"
+      >
+        <div className="flex flex-col h-full max-h-[92vh] overflow-hidden text-start print:max-h-none print:overflow-visible print:h-auto" dir="rtl">
+          {/* Header Bar (Pinned Top) */}
+          <div className="shrink-0 px-6 py-3.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between no-print print:hidden">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
               <Printer className="h-5 w-5 text-emerald-600" />
               <span>
                 {printModalType === 'announcement'
-                  ? 'إعلان رسمي للطلبة (A4 جاهز للنشر)'
+                  ? 'معاينة إعلان رسمي للطلبة (A4 جاهز للنشر)'
                   : printModalType === 'certificate'
-                  ? 'شهادة إنجاز حصة رسمية'
+                  ? 'معاينة شهادة إنجاز حصة رسمية'
                   : printModalType === 'matrix'
-                  ? 'مصفوفة الشغور الأسبوعية الشاملة'
+                  ? 'معاينة مصفوفة الشغور الأسبوعية الشاملة'
                   : 'كشف الحصص الإضافية والتعويضية'}
               </span>
             </DialogTitle>
             <div className="flex items-center gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => window.print()}
-                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs"
-              >
-                <Printer className="h-4 w-4" />
-                <span>طباعة الوثيقة</span>
-              </Button>
               <button
+                type="button"
                 onClick={() => setPrintModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label="إغلاق النافذة"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Printable Layout Container */}
-          <div className="bg-white p-8 border rounded-2xl print:p-0 print:border-none text-slate-900 shadow-sm font-sans" id="printable-section">
-            {/* Algerian Official University Header */}
-            <div className="text-center border-b pb-4 mb-5">
-              <h2 className="font-bold text-sm">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
-              <h3 className="font-bold text-xs mt-0.5">وزارة التعليم العالي والبحث العلمي</h3>
-              <h4 className="font-semibold text-xs mt-0.5">جامعة الشهيد حمه لخضر - الوادي | كلية العلوم الاقتصادية والتجارية وعلوم التسيير</h4>
-              <p className="text-[11px] text-slate-600 mt-0.5">قسم التدريس والبرمجة البيداغوجية</p>
-              <div className="text-[11px] text-slate-500 mt-2 font-mono">
-                السنة الجامعية: {academicYear} | {semester}
-              </div>
-            </div>
+          {/* Scrollable Document Area (Middle) */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/70 dark:bg-slate-950/40 print:p-0 print:overflow-visible print:bg-white">
+            <div
+              id="student-announcement-print-area"
+              className="printable-document-card max-w-4xl mx-auto bg-white text-slate-900 p-8 sm:p-10 border border-slate-200 shadow-sm rounded-2xl print:max-w-none print:w-full print:p-0 print:m-0 print:border-none print:shadow-none print:rounded-none font-sans"
+            >
+              {/* Algerian Official University Header for non-announcement documents */}
+              {printModalType !== 'announcement' && (
+                <div className="text-center border-b pb-4 mb-5">
+                  <h2 className="font-bold text-sm">الجمهورية الجزائرية الديمقراطية الشعبية</h2>
+                  <h3 className="font-bold text-xs mt-0.5">وزارة التعليم العالي والبحث العلمي</h3>
+                  <h4 className="font-semibold text-xs mt-0.5">جامعة الشهيد حمه لخضر - الوادي | كلية العلوم الاقتصادية والتجارية وعلوم التسيير</h4>
+                  <p className="text-[11px] text-slate-600 mt-0.5">قسم التدريس والبرمجة البيداغوجية</p>
+                  <div className="text-[11px] text-slate-500 mt-2 font-mono">
+                    السنة الجامعية: {academicYear} | {semester}
+                  </div>
+                </div>
+              )}
 
             {/* View 1: Student Announcement Notice (100% Algerian Faculty Official Layout) */}
             {printModalType === 'announcement' && (
@@ -2894,18 +2908,47 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
                   </div>
 
                   {/* Preface Paragraph */}
-                  <div className="text-xs leading-relaxed text-slate-900 font-medium bg-slate-50/60 p-3 rounded-xl border border-slate-200">
-                    ليكن في علم طلبة قسم <strong>{announcementDepartment ? departments.find(d => d.id === Number(announcementDepartment))?.name : 'الكلية'}</strong>
-                    {announcementSpecialization ? ` تخصص <strong>${specializations.find(sp => sp.id === Number(announcementSpecialization))?.name || ''}</strong>` : ''} أنه تقرر برمجة{' '}
-                    <strong className="text-rose-700">
+                  <div className="text-xs leading-relaxed text-slate-900 font-medium bg-slate-50/80 p-3 rounded-xl border border-slate-300 print:bg-transparent print:border-none print:p-0">
+                    <span>ليكن في علم طلبة قسم </span>
+                    <strong className="font-bold text-slate-950">
+                      {announcementDepartment ? departments.find(d => d.id === Number(announcementDepartment))?.name : 'العلوم الاقتصادية والتجارية وعلوم التسيير'}
+                    </strong>
+                    {announcementSpecialization ? (
+                      <>
+                        <span> تخصص </span>
+                        <strong className="font-bold text-slate-950">
+                          {specializations.find(sp => sp.id === Number(announcementSpecialization))?.name || ''}
+                        </strong>
+                      </>
+                    ) : null}
+                    {announcementGroup ? (
+                      <>
+                        <span> (فوج </span>
+                        <strong className="font-bold text-slate-950">
+                          {groups.find(g => g.id === Number(announcementGroup))?.name || ''}
+                        </strong>
+                        <span>)</span>
+                      </>
+                    ) : null}
+                    {announcementProfessor ? (
+                      <>
+                        <span>، للأستاذ(ة): </span>
+                        <strong className="font-bold text-slate-950">
+                          {professors.find(p => p.id === Number(announcementProfessor))?.name || ''}
+                        </strong>
+                      </>
+                    ) : null}
+                    <span> أنه تقرر برمجة </span>
+                    <strong className="font-extrabold text-rose-700 print:text-black">
                       {announcementSessionType === 'extra'
                         ? 'حصة إضافية'
                         : announcementSessionType === 'makeup'
                         ? 'حصة تعويضية'
                         : announcementSessionType === 'exam'
-                        ? 'إمتحان الأعمال الموجهة'
+                        ? 'إمتحان الأعمال الموجهة / الفروض المحروسة'
                         : 'حصص تعويضية وإضافية'}
-                    </strong> وذلك حسب الجدول الموالي:
+                    </strong>
+                    <span>، وذلك وفق المواعيد المبينة في الجدول التالي:</span>
                   </div>
 
                   {/* 7-Column Table with 2-line Day & Date */}
@@ -3148,8 +3191,114 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
               </div>
             )}
           </div>
+          </div>
+
+          {/* Pinned Bottom Action Bar */}
+          <div className="shrink-0 px-6 py-3.5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 no-print print:hidden">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Sparkles className="w-4 h-4 text-emerald-600" />
+              <span className="hidden sm:inline">
+                {printModalType === 'announcement'
+                  ? `ورقة إعلان رسمية A4 مهيأة للنشر والتوقيع (${announcementFilteredList.length} حصة مدرجة)`
+                  : 'وثيقة رسمية مهيأة للطباعة المباشرة'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPrintModalOpen(false)}
+                className="text-xs font-semibold px-4"
+              >
+                إغلاق
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => window.print()}
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2 rounded-xl shadow-md"
+              >
+                <Printer className="h-4 w-4" />
+                <span>طباعة الوثيقة الآن</span>
+              </Button>
+            </div>
+          </div>
         </div>
       </Dialog>
+
+      {/* Dynamic Print Stylesheet for Pure Print Isolation */}
+      {printModalOpen && (
+        <style dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              @page {
+                size: ${printModalType === 'matrix' ? 'A4 landscape' : 'A4 portrait'};
+                margin: ${printModalType === 'matrix' ? '5mm' : '8mm 10mm'};
+              }
+              html, body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                min-height: auto !important;
+                overflow: visible !important;
+              }
+              nav, header, aside, footer, .no-print, [role="dialog"] button, button {
+                display: none !important;
+              }
+              #available-rooms-main-screen,
+              .available-rooms-interactive {
+                display: none !important;
+              }
+              [role="dialog"] {
+                position: static !important;
+                inset: auto !important;
+                background: transparent !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                display: block !important;
+                overflow: visible !important;
+              }
+              #student-announcement-print-area {
+                display: block !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                border: none !important;
+                box-shadow: none !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+              }
+              #student-announcement-print-area table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                border: 2px solid #000000 !important;
+                table-layout: auto !important;
+              }
+              #student-announcement-print-area th,
+              #student-announcement-print-area td {
+                border: 1px solid #000000 !important;
+                color: #000000 !important;
+                padding: 6px 8px !important;
+                text-align: center;
+              }
+              #student-announcement-print-area thead tr {
+                background-color: #f1f5f9 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+            }
+          `
+        }} />
+      )}
     </div>
   );
 }

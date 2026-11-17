@@ -45,6 +45,8 @@ body {
   .no-print,
   #main-schedule-screen,
   #main-screen-interactive,
+  #available-rooms-main-screen,
+  .available-rooms-interactive,
   [role="dialog"] button,
   button {
     display: none !important;
@@ -95,6 +97,36 @@ body {
   .printable-schedule-sheet td {
     word-break: break-word !important;
     overflow-wrap: break-word !important;
+  }
+
+  /* Printable Student Announcement Notice & Official Documents */
+  #student-announcement-print-area,
+  #printable-section {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #student-announcement-print-area table,
+  #printable-section table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    border: 2px solid #000000 !important;
+  }
+
+  #student-announcement-print-area th,
+  #student-announcement-print-area td,
+  #printable-section th,
+  #printable-section td {
+    border: 1px solid #000000 !important;
+    color: #000000 !important;
   }
 }
 
