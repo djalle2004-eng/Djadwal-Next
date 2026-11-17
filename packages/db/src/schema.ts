@@ -419,3 +419,51 @@ export const apiDiffReport = pgTable('api_diff_report', {
   routeIdx: index('idx_api_diff_route').on(table.route_name),
   createdIdx: index('idx_api_diff_created').on(table.created_at)
 }));
+
+// 31. Schedule Versions (P13 Auto-Scheduler & Approval Workflow)
+export const scheduleVersions = pgTable('schedule_versions', {
+  id: serial('id').primaryKey(),
+  semester_id: integer('semester_id').references(() => semesters.id).notNull(),
+  version_number: integer('version_number').notNull(),
+  title: text('title').default(''),
+  status: varchar('status', { length: 30 }).default('draft').notNull(), // 'draft' | 'review' | 'approved' | 'published' | 'archived'
+  note: text('note').default(''),
+  created_by: integer('created_by').references(() => users.id).notNull(),
+  approved_by: integer('approved_by').references(() => users.id),
+  approved_at: timestamp('approved_at'),
+  published_at: timestamp('published_at'),
+  metrics: text('metrics').default('{}'),
+  critical_conflicts_count: integer('critical_conflicts_count').default(0),
+  total_sessions_count: integer('total_sessions_count').default(0),
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull()
+}, (table) => ({
+  semVerIdx: index('idx_schedule_versions_sem_ver').on(table.semester_id, table.version_number),
+  statusIdx: index('idx_schedule_versions_status').on(table.status),
+  createdIdx: index('idx_schedule_versions_created').on(table.created_at)
+}));
+
+// 32. Schedule Version Items (P13 Detailed Session Assignments per Version)
+export const scheduleVersionItems = pgTable('schedule_version_items', {
+  id: serial('id').primaryKey(),
+  schedule_version_id: integer('schedule_version_id').references(() => scheduleVersions.id, { onDelete: 'cascade' }).notNull(),
+  assignment_id: integer('assignment_id').references(() => assignments.id),
+  course_id: integer('course_id').references(() => courses.id).notNull(),
+  professor_id: integer('professor_id').references(() => professors.id).notNull(),
+  group_id: integer('group_id').references(() => groups.id).notNull(),
+  room_id: integer('room_id').references(() => rooms.id).notNull(),
+  day_of_week: integer('day_of_week').notNull(),
+  start_time: text('start_time').notNull(),
+  end_time: text('end_time').notNull(),
+  session_type: text('session_type').default('lecture'),
+  item_status: varchar('item_status', { length: 20 }).default('proposed').notNull(), // 'proposed' | 'accepted' | 'rejected' | 'modified'
+  note: text('note').default(''),
+  metadata: text('metadata').default('{}'),
+  created_at: timestamp('created_at').defaultNow().notNull()
+}, (table) => ({
+  verIdx: index('idx_ver_items_version_id').on(table.schedule_version_id),
+  profSlotIdx: index('idx_ver_items_prof_slot').on(table.professor_id, table.day_of_week, table.start_time),
+  groupSlotIdx: index('idx_ver_items_group_slot').on(table.group_id, table.day_of_week, table.start_time),
+  roomSlotIdx: index('idx_ver_items_room_slot').on(table.room_id, table.day_of_week, table.start_time)
+}));
+

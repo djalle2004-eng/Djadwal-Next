@@ -52,6 +52,8 @@ module.exports = {
     'reconciliation_diffs',
     'rooms',
     'sandbox_snapshots',
+    'schedule_versions',
+    'schedule_version_items',
     'schema_migrations',
     'semesters',
     'sessions',

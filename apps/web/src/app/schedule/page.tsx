@@ -1196,6 +1196,15 @@ export default function SchedulePage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* P13 Auto-Scheduler & Versions Quick Link */}
+          <Link
+            href="/schedule/versions"
+            className="flex items-center gap-2 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-sm font-semibold transition-colors border border-emerald-200 shadow-sm"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span>المولّد الآلي والإصدارات</span>
+          </Link>
+
           {/* Quick link to Groups Schedules */}
           <Link
             href="/groups/schedules"

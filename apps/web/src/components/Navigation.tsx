@@ -107,6 +107,12 @@ const navGroups: NavGroup[] = [
         icon: CalendarClock,
         description: 'إدارة وتوزيع الحصص والتكليفات البيداغوجية والاستيراد الذري',
       },
+      {
+        name: 'إصدارات الجدول والمولّد الآلي',
+        href: '/schedule/versions',
+        icon: History,
+        description: 'المولّد الآلي، سير الموافقات المزدوجة، كشف التعارضات التفسيري والاسترجاع السريع',
+      },
     ],
   },
   {
