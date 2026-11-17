@@ -46,6 +46,8 @@ import { api } from '@/lib/api';
 import UndoToast from '@/components/UndoToast';
 import { TIME_SLOTS, DAYS, normalizeDay, matchesSlot } from '@/constants/timeSlots';
 import { useSandbox } from '@/context/SandboxContext';
+import { useOffline } from '@/context/OfflineContext';
+import { saveOfflineTimetable, getOfflineTimetable } from '@/lib/offline-db';
 import SessionFormModal from '@/components/SessionFormModal';
 
 interface Assignment {
@@ -143,6 +145,9 @@ export default function SchedulePage() {
     changeCount,
   } = useSandbox();
 
+  // Offline & PWA Sync Context (P11)
+  const { isOnline, queueMutation, setLastUpdatedTimestamp } = useOffline();
+
   // Effective assignments: in simulation mode, display and check against staged assignments
   const effectiveAssignments = isSandboxMode ? stagedAssignments : assignments;
 
@@ -164,6 +169,24 @@ export default function SchedulePage() {
       if (assignRes.status === 'fulfilled' && Array.isArray(assignRes.value)) {
         setAssignments(assignRes.value);
         syncLiveAssignments(assignRes.value);
+
+        // P11: Cache published timetable in IndexedDB for offline classroom reading
+        const grpVal = groupsRes.status === 'fulfilled' && Array.isArray(groupsRes.value) ? groupsRes.value : [];
+        const prfVal = profsRes.status === 'fulfilled' && Array.isArray(profsRes.value) ? profsRes.value : [];
+        const rmVal = roomsRes.status === 'fulfilled' && Array.isArray(roomsRes.value) ? roomsRes.value : [];
+        const crsVal = coursesRes && coursesRes.status === 'fulfilled' && Array.isArray(coursesRes.value) ? coursesRes.value : [];
+
+        saveOfflineTimetable({
+          academicYear,
+          semester,
+          assignments: assignRes.value,
+          groups: grpVal,
+          professors: prfVal,
+          rooms: rmVal,
+          courses: crsVal,
+        }).catch((err) => console.warn('[PWA] Failed to cache timetable in IndexedDB:', err));
+
+        setLastUpdatedTimestamp(Date.now());
       }
       if (groupsRes.status === 'fulfilled' && Array.isArray(groupsRes.value)) {
         setGroups(groupsRes.value);
@@ -181,14 +204,51 @@ export default function SchedulePage() {
         setPrintSettings(printRes.value);
       }
 
-      // Check if critical calls failed
-      if (assignRes.status === 'rejected' || groupsRes.status === 'rejected') {
+      // Check if critical calls failed (or device is offline)
+      if (assignRes.status === 'rejected' || groupsRes.status === 'rejected' || !navigator.onLine) {
+        // P11 Offline Fallback: Retrieve published timetable from IndexedDB
+        const offlineData = await getOfflineTimetable(academicYear, semester);
+        if (offlineData && Array.isArray(offlineData.assignments) && offlineData.assignments.length > 0) {
+          setAssignments(offlineData.assignments);
+          syncLiveAssignments(offlineData.assignments);
+          if (offlineData.groups) setGroups(offlineData.groups);
+          if (offlineData.professors) setProfessors(offlineData.professors);
+          if (offlineData.rooms) setRooms(offlineData.rooms);
+          if (offlineData.courses) setCourses(offlineData.courses);
+          setLastUpdatedTimestamp(offlineData.cachedAt);
+          setError(null);
+          setUndoToast({
+            show: true,
+            message: `⚡ أنت في وضع العمل دون اتصال: تم استرجاع جدول الحصص المحفوظ محلياً على جهازك.`,
+            changeLogId: null,
+          });
+          return;
+        }
+
         const firstErr: any = assignRes.status === 'rejected' ? assignRes.reason : (groupsRes as any).reason;
         setError(firstErr?.messageAr || firstErr?.message || 'تعذر جلب بيانات الجدول الزمني من الخادم.');
       }
     } catch (err: any) {
       console.error('Failed to load schedule data:', err);
-      setError(err?.messageAr || err?.message || 'تعذر الاتصال بالخادم.');
+      // P11 Offline Fallback on exception
+      const offlineData = await getOfflineTimetable(academicYear, semester);
+      if (offlineData && Array.isArray(offlineData.assignments) && offlineData.assignments.length > 0) {
+        setAssignments(offlineData.assignments);
+        syncLiveAssignments(offlineData.assignments);
+        if (offlineData.groups) setGroups(offlineData.groups);
+        if (offlineData.professors) setProfessors(offlineData.professors);
+        if (offlineData.rooms) setRooms(offlineData.rooms);
+        if (offlineData.courses) setCourses(offlineData.courses);
+        setLastUpdatedTimestamp(offlineData.cachedAt);
+        setError(null);
+        setUndoToast({
+          show: true,
+          message: `⚡ أنت في وضع العمل دون اتصال: تم استرجاع جدول الحصص المحفوظ محلياً على جهازك.`,
+          changeLogId: null,
+        });
+      } else {
+        setError(err?.messageAr || err?.message || 'تعذر الاتصال بالخادم.');
+      }
     } finally {
       setLoading(false);
     }
@@ -778,7 +838,33 @@ export default function SchedulePage() {
 
     const successMsg = `تم نقل حصة (${sessionToMove.course_name || 'المقرر'}) بنجاح إلى يوم ${targetDayName} (${targetSlot.label})`;
 
-    // 3. Safe Backend Persistence with OCC (Unit of Work)
+    // 3. Offline Mode Handling (P11)
+    if (!isOnline) {
+      const idempotencyKey = `sched-move-${sessionToMove.id}-${Date.now()}`;
+      await queueMutation({
+        id: idempotencyKey,
+        url: `/assignments/${sessionToMove.id}/move`,
+        method: 'POST',
+        body: {
+          day_of_week: targetDayId,
+          start_time: targetSlot.start,
+          end_time: targetSlot.end,
+          room_id: targetRoomId,
+          version: sessionToMove.version !== undefined ? Number(sessionToMove.version) : undefined,
+        },
+        idempotencyKey,
+        description: `نقل حصة (${sessionToMove.course_name}) إلى يوم ${targetDayName} (${targetSlot.label})`,
+      });
+
+      setUndoToast({
+        show: true,
+        message: `⚡ [بانتظار المزامنة] تم حفظ نقل حصة (${sessionToMove.course_name || 'المقرر'}) محلياً. سيتم إرسالها تلقائياً عند عودة الاتصال.`,
+        changeLogId: null,
+      });
+      return;
+    }
+
+    // 4. Safe Backend Persistence with OCC (Unit of Work)
     setIsMoving(true);
     try {
       const payload = {
@@ -806,6 +892,33 @@ export default function SchedulePage() {
       });
     } catch (err: any) {
       console.error('Failed to move assignment on server:', err);
+
+      // P11: If network failed unexpectedly, queue mutation instead of rolling back
+      if (err?.code === 'NETWORK_ERROR' || !navigator.onLine) {
+        const idempotencyKey = `sched-move-${sessionToMove.id}-${Date.now()}`;
+        await queueMutation({
+          id: idempotencyKey,
+          url: `/assignments/${sessionToMove.id}/move`,
+          method: 'POST',
+          body: {
+            day_of_week: targetDayId,
+            start_time: targetSlot.start,
+            end_time: targetSlot.end,
+            room_id: targetRoomId,
+            version: sessionToMove.version !== undefined ? Number(sessionToMove.version) : undefined,
+          },
+          idempotencyKey,
+          description: `نقل حصة (${sessionToMove.course_name}) إلى يوم ${targetDayName} (${targetSlot.label})`,
+        });
+
+        setUndoToast({
+          show: true,
+          message: `⚡ [بانتظار المزامنة] انقطع الاتصال بالخادم، تم حفظ نقل الحصة محلياً وستتم المزامنة آلياً.`,
+          changeLogId: null,
+        });
+        return;
+      }
+
       // Rollback optimistic update
       setAssignments(previousAssignments);
 
@@ -888,6 +1001,66 @@ export default function SchedulePage() {
 
     const idempotencyKey = `sched-${mode}-${sessionData.id || Date.now()}-${Date.now()}`;
 
+    // P11: Offline Mode Queueing
+    if (!isOnline) {
+      if (mode === 'add') {
+        const tempId = -Math.floor(Date.now() / 1000 + Math.random() * 10000);
+        const created: Assignment = {
+          ...sessionData,
+          id: tempId,
+          version: 1,
+        } as Assignment;
+        setAssignments((prev) => [...prev, created]);
+        await queueMutation({
+          id: idempotencyKey,
+          url: '/assignments',
+          method: 'POST',
+          body: {
+            course_id: sessionData.course_id,
+            professor_id: sessionData.professor_id,
+            group_id: sessionData.group_id,
+            room_id: sessionData.room_id,
+            day_of_week: sessionData.day_of_week,
+            start_time: sessionData.start_time,
+            end_time: sessionData.end_time,
+            session_type: sessionData.session_type,
+            specialization: sessionData.specialization,
+            academic_year: sessionData.academic_year || academicYear,
+            semester: sessionData.semester || semester,
+          },
+          idempotencyKey,
+          description: `إضافة حصة (${sessionData.course_name}) للفوج (${sessionData.group_name || ''})`,
+        });
+
+        setUndoToast({
+          show: true,
+          message: `⚡ [بانتظار المزامنة] تمت إضافة حصة (${sessionData.course_name}) محلياً، وستتم المزامنة آلياً عند عودة الاتصال.`,
+          changeLogId: null,
+        });
+      } else {
+        setAssignments((prev) => prev.map((a) => (a.id === sessionData.id ? { ...a, ...sessionData } : a)));
+        await queueMutation({
+          id: idempotencyKey,
+          url: `/assignments/${sessionData.id}`,
+          method: 'PUT',
+          body: {
+            ...sessionData,
+            academic_year: sessionData.academic_year || academicYear,
+            semester: sessionData.semester || semester,
+          },
+          idempotencyKey,
+          description: `تعديل بيانات حصة (${sessionData.course_name})`,
+        });
+
+        setUndoToast({
+          show: true,
+          message: `⚡ [بانتظار المزامنة] تم حفظ تعديل حصة (${sessionData.course_name}) محلياً، وستتم المزامنة آلياً عند عودة الاتصال.`,
+          changeLogId: null,
+        });
+      }
+      return;
+    }
+
     if (mode === 'add') {
       const res = await api.post(
         '/assignments',
@@ -961,6 +1134,27 @@ export default function SchedulePage() {
         setUndoToast({
           show: true,
           message: `⚡ [وضع التجربة] تم حذف حصة (${deleteConfirmSession.course_name}) افتراضياً`,
+          changeLogId: null,
+        });
+        setDeleteConfirmSession(null);
+        return;
+      }
+
+      // P11: Offline Mode Queueing
+      if (!isOnline) {
+        const idempotencyKey = `sched-del-${deleteConfirmSession.id}-${Date.now()}`;
+        setAssignments((prev) => prev.filter((a) => a.id !== deleteConfirmSession.id));
+        await queueMutation({
+          id: idempotencyKey,
+          url: `/assignments/${deleteConfirmSession.id}`,
+          method: 'DELETE',
+          idempotencyKey,
+          description: `حذف حصة (${deleteConfirmSession.course_name}) من الجدول`,
+        });
+
+        setUndoToast({
+          show: true,
+          message: `⚡ [بانتظار المزامنة] تم حذف الحصة محلياً، وسيتم تطبيق الحذف في الخادم عند عودة الاتصال.`,
           changeLogId: null,
         });
         setDeleteConfirmSession(null);

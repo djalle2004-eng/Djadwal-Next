@@ -20,7 +20,8 @@ import {
   Edit2,
   Trash2,
   X,
-  FileJson
+  FileJson,
+  ShieldAlert
 } from 'lucide-react';
 
 import {
@@ -40,6 +41,7 @@ import {
 } from '@djadwal/ui';
 
 import { api } from '@/lib/api';
+import { useOffline } from '@/context/OfflineContext';
 
 interface UserItem {
   id: number;
@@ -77,6 +79,24 @@ export default function BackupsAndUsersPage() {
   const [selectedUserForPerms, setSelectedUserForPerms] = useState<UserItem | null>(null);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [savingPerms, setSavingPerms] = useState(false);
+
+  // Clear Device Data Modal (P11)
+  const { clearAllDeviceData } = useOffline();
+  const [clearDeviceDataModalOpen, setClearDeviceDataModalOpen] = useState(false);
+  const [clearingDeviceData, setClearingDeviceData] = useState(false);
+
+  const handleConfirmClearDeviceData = async () => {
+    try {
+      setClearingDeviceData(true);
+      const res = await clearAllDeviceData();
+      showToast('success', `تم حذف كافة بيانات الجهاز والتخزين المؤقت بنجاح (${res.clearedStores.length} حاويات تم تطهيرها)`);
+      setClearDeviceDataModalOpen(false);
+    } catch (err: any) {
+      showToast('error', 'فشل مسح بعض بيانات الجهاز');
+    } finally {
+      setClearingDeviceData(false);
+    }
+  };
 
   // Toast
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -418,7 +438,43 @@ export default function BackupsAndUsersPage() {
           </CardContent>
         </Card>
 
-        {/* SECTION 2: USERS & RBAC MANAGEMENT */}
+        {/* SECTION 2: DEVICE DATA & LOCAL CACHE PRIVACY POLICY (P11) */}
+        <Card className="border-amber-200 dark:border-amber-800/80 shadow-sm bg-gradient-to-br from-amber-50/20 to-white dark:from-amber-950/10 dark:to-slate-900">
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2 text-amber-900 dark:text-amber-300">
+                  <ShieldAlert className="h-5 w-5 text-amber-600" />
+                  <span>حماية البيانات والتخزين المؤقت المحلي (Device Data & Local Cache Policy)</span>
+                </CardTitle>
+                <CardDescription>
+                  لحماية الخصوصية على الحواسيب والأجهزة المشتركة داخل القاعات، يمكنك مسح كافة الجداول المخزنة في IndexedDB وذاكرة التخزين المؤقت للـ Service Worker وسجل الطلبات بضغطة واحدة.
+                </CardDescription>
+              </div>
+
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setClearDeviceDataModalOpen(true)}
+                disabled={clearingDeviceData}
+                className="gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-sm"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>{clearingDeviceData ? 'جاري مسح البيانات...' : 'حذف بيانات الجهاز والتخزين المؤقت'}</span>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed bg-amber-50/50 dark:bg-amber-950/20 p-3.5 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
+              <span className="font-bold text-amber-900 dark:text-amber-200 block mb-1">
+                🔒 سياسة الأمان والعمل دون اتصال (P11 Offline Hygiene):
+              </span>
+              يقوم نظام Djadwal بتخزين الجداول المنشورة فقط في IndexedDB لتسريع التصفح داخل القاعات دون إنترنت، مع تشفير طابور المزامنة التلقائية. لا يتم تخزين أي كلمات مرور أو مفاتيح سرية نهائياً. النقر على الزر أعلاه يضمن تطهير الجهاز المشترك تماماً.
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* SECTION 3: USERS & RBAC MANAGEMENT */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -698,6 +754,46 @@ export default function BackupsAndUsersPage() {
               className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold"
             >
               {savingPerms ? 'جاري الحفظ...' : 'حفظ الصلاحيات'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Clear Device Data Confirmation Modal (P11) */}
+      <Dialog
+        open={clearDeviceDataModalOpen}
+        onClose={() => !clearingDeviceData && setClearDeviceDataModalOpen(false)}
+        size="sm"
+      >
+        <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full space-y-4 text-start">
+          <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+            <Trash2 className="w-6 h-6 text-rose-600" />
+          </div>
+          <DialogTitle className="text-center text-base font-bold text-slate-900 dark:text-slate-100">
+            تأكيد حذف بيانات الجهاز والتخزين المؤقت
+          </DialogTitle>
+          <DialogDescription className="text-center text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            هل أنت متأكد من رغبتك في حذف كافة الجداول والملفات المخزنة محلياً في IndexedDB وCacheStorage على هذا الجهاز؟ لن يؤثر هذا الإجراء على قاعدة بيانات الخادم.
+          </DialogDescription>
+          <div className="pt-2 flex items-center justify-between gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setClearDeviceDataModalOpen(false)}
+              disabled={clearingDeviceData}
+              className="text-xs"
+            >
+              إلغاء
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleConfirmClearDeviceData}
+              disabled={clearingDeviceData}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{clearingDeviceData ? 'جاري المسح...' : 'تأكيد الحذف النهائي'}</span>
             </Button>
           </div>
         </div>
