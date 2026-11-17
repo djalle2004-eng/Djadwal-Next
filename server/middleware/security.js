@@ -132,7 +132,9 @@ const helmetMiddleware = helmet({
         "https://generativelanguage.googleapis.com",
         "https://openrouter.ai",
         "https://fonts.googleapis.com",
-        "https://fonts.gstatic.com"
+        "https://fonts.gstatic.com",
+        "https://*.kaspersky-labs.com",
+        "wss://*.kaspersky-labs.com"
       ],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],

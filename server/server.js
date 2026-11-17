@@ -58,8 +58,8 @@ if (isHardeningEnabled) {
   app.use(corsMiddleware);
 }
 
-// 3. Lowered Request Body Limits (256KB)
-const jsonLimit = isHardeningEnabled ? '256kb' : '50mb';
+// 3. Request Body Limits (10MB for bulk operations, imports & backups)
+const jsonLimit = process.env.BODY_PARSER_LIMIT || (isHardeningEnabled ? '10mb' : '50mb');
 app.use(express.json({ limit: jsonLimit }));
 app.use(express.urlencoded({ extended: true, limit: jsonLimit }));
 

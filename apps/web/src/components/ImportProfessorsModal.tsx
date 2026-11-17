@@ -141,10 +141,29 @@ export default function ImportProfessorsModal({
     setErrorMessage(null);
 
     try {
+      // Sanitize payload: only send actionable rows and strip UI/diff metadata to prevent large request payloads
+      const actionableRows = dryRunData.rows
+        .filter((r) => r.action === 'create' || r.action === 'update')
+        .map((r) => ({
+          id: r.id ? Number(r.id) : undefined,
+          name: r.name,
+          email: r.email || undefined,
+          phone: r.phone || undefined,
+          academic_rank: r.academic_rank,
+          is_temporary: r.is_temporary,
+          specialization: r.specialization || undefined,
+          department: r.department || undefined,
+          action: r.action,
+        }));
+
+      if (actionableRows.length === 0) {
+        throw new Error('لا توجد أي تغييرات أو أساتذة جدد للاستيراد (كافة السجلات متطابقة أو تحتوي على أخطاء).');
+      }
+
       const idempotencyKey = `prof-import-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const res = await api.commitProfessorsImport(
         {
-          rows: dryRunData.rows,
+          rows: actionableRows,
           skipErrors,
           academicYear,
         },

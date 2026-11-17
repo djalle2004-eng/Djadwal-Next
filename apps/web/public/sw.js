@@ -73,6 +73,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Guard: Only handle same-origin requests or whitelisted external CDN resources (Google Fonts).
+  // Explicitly bypass third-party scripts, antivirus injectors (Kaspersky, etc.) and external tracking.
+  const isSameOrigin = url.origin === self.location.origin;
+  const isWhitelistedCdn =
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com');
+
+  if (!isSameOrigin && !isWhitelistedCdn) {
+    return;
+  }
+
   // Strategy 4: Network-Only for mutating methods (POST, PUT, DELETE, PATCH) & Auth routes
   if (
     request.method !== 'GET' ||
