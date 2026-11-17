@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Navigation from '@/components/Navigation';
 import Providers from '@/components/Providers';
@@ -6,6 +6,23 @@ import Providers from '@/components/Providers';
 export const metadata: Metadata = {
   title: 'نظام Djadwal — إدارة الجداول الأكاديمية',
   description: 'منظومة إدارة وتوزيع الجداول الأكاديمية والتكليفات',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Djadwal',
+  },
+  icons: {
+    icon: '/icons/icon.svg',
+    apple: '/icons/icon-192.png',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#059669',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

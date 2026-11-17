@@ -300,7 +300,7 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...assignmentData,
       id: tempId,
       version: 1,
-    };
+    } as Assignment;
 
     setHistory((prev) => [...prev, JSON.parse(JSON.stringify(stagedAssignments))]);
     setFuture([]);
