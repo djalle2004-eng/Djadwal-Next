@@ -297,6 +297,9 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addSimulatedAssignment = useCallback((assignmentData: Omit<Assignment, 'id'>): Assignment => {
     const tempId = -Math.floor(Date.now() / 1000 + Math.random() * 10000);
     const newSession: Assignment = {
+      day_of_week: assignmentData.day_of_week,
+      start_time: assignmentData.start_time,
+      end_time: assignmentData.end_time,
       ...assignmentData,
       id: tempId,
       version: 1,
