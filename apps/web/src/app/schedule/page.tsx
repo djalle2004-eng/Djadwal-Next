@@ -26,6 +26,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   FlaskConical,
+  Plus,
+  Trash2,
+  Edit,
 } from 'lucide-react';
 import {
   Button,
@@ -43,6 +46,7 @@ import { api } from '@/lib/api';
 import UndoToast from '@/components/UndoToast';
 import { TIME_SLOTS, DAYS, normalizeDay, matchesSlot } from '@/constants/timeSlots';
 import { useSandbox } from '@/context/SandboxContext';
+import SessionFormModal from '@/components/SessionFormModal';
 
 interface Assignment {
   id: number;
@@ -69,10 +73,20 @@ export default function SchedulePage() {
   const [semester, setSemester] = useState('السداسي الأول');
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [professors, setProfessors] = useState<any[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Direct Add / Edit / Delete Session Modals State
+  const [isSessionFormOpen, setIsSessionFormOpen] = useState(false);
+  const [sessionFormMode, setSessionFormMode] = useState<'add' | 'edit'>('add');
+  const [sessionFormSelectedSession, setSessionFormSelectedSession] = useState<Assignment | null>(null);
+  const [formDefaultDayId, setFormDefaultDayId] = useState<number>(0);
+  const [formDefaultSlot, setFormDefaultSlot] = useState<(typeof TIME_SLOTS)[0] | undefined>(undefined);
+  const [deleteConfirmSession, setDeleteConfirmSession] = useState<Assignment | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   // Filters
   const [filterType, setFilterType] = useState<'specialization' | 'group' | 'professor' | 'room' | 'all'>('specialization');
@@ -122,6 +136,9 @@ export default function SchedulePage() {
     enterSandboxMode,
     exitSandboxMode,
     applySimulatedMove,
+    addSimulatedAssignment,
+    updateSimulatedAssignment,
+    deleteSimulatedAssignment,
     syncLiveAssignments,
     changeCount,
   } = useSandbox();
@@ -138,10 +155,11 @@ export default function SchedulePage() {
         api.get('/groups?limit=500'),
         api.get('/professors?limit=500'),
         api.get('/rooms?limit=500'),
+        api.get('/catalog/courses?limit=1000').catch(() => api.get('/courses?limit=1000').catch(() => [])),
         api.getPrintSettings().catch(() => null),
       ]);
 
-      const [assignRes, groupsRes, profsRes, roomsRes, printRes] = results;
+      const [assignRes, groupsRes, profsRes, roomsRes, coursesRes, printRes] = results;
 
       if (assignRes.status === 'fulfilled' && Array.isArray(assignRes.value)) {
         setAssignments(assignRes.value);
@@ -155,6 +173,9 @@ export default function SchedulePage() {
       }
       if (roomsRes.status === 'fulfilled' && Array.isArray(roomsRes.value)) {
         setRooms(roomsRes.value);
+      }
+      if (coursesRes && coursesRes.status === 'fulfilled' && Array.isArray(coursesRes.value)) {
+        setCourses(coursesRes.value);
       }
       if (printRes && printRes.status === 'fulfilled' && printRes.value) {
         setPrintSettings(printRes.value);
@@ -820,6 +841,148 @@ export default function SchedulePage() {
     }
   };
 
+  // Open Add Session Modal
+  const handleOpenAddSession = (dayId: number, slot: (typeof TIME_SLOTS)[0]) => {
+    setSessionFormMode('add');
+    setSessionFormSelectedSession(null);
+    setFormDefaultDayId(dayId);
+    setFormDefaultSlot(slot);
+    setIsSessionFormOpen(true);
+  };
+
+  // Open Edit Session Modal
+  const handleOpenEditSession = (sessionToEdit: Assignment) => {
+    setSessionFormMode('edit');
+    setSessionFormSelectedSession(sessionToEdit);
+    setFormDefaultDayId(normalizeDay(sessionToEdit.day_of_week));
+    const slotObj = TIME_SLOTS.find((s) => s.start === sessionToEdit.start_time);
+    setFormDefaultSlot(slotObj);
+    setIsSessionFormOpen(true);
+  };
+
+  // Open Delete Confirmation Dialog
+  const handleOpenDeleteSession = (sessionToDelete: Assignment) => {
+    setDeleteConfirmSession(sessionToDelete);
+  };
+
+  // Save Session (Add or Edit) with OCC and Optimistic UI
+  const handleSaveSession = async (sessionData: Assignment, mode: 'add' | 'edit') => {
+    if (isSandboxMode) {
+      if (mode === 'add') {
+        addSimulatedAssignment(sessionData);
+        setUndoToast({
+          show: true,
+          message: `⚡ [وضع التجربة] تمت إضافة حصة (${sessionData.course_name}) افتراضياً`,
+          changeLogId: null,
+        });
+      } else {
+        updateSimulatedAssignment(sessionData.id, sessionData);
+        setUndoToast({
+          show: true,
+          message: `⚡ [وضع التجربة] تم تحديث بيانات حصة (${sessionData.course_name}) افتراضياً`,
+          changeLogId: null,
+        });
+      }
+      return;
+    }
+
+    const idempotencyKey = `sched-${mode}-${sessionData.id || Date.now()}-${Date.now()}`;
+
+    if (mode === 'add') {
+      const res = await api.post(
+        '/assignments',
+        {
+          course_id: sessionData.course_id,
+          professor_id: sessionData.professor_id,
+          group_id: sessionData.group_id,
+          room_id: sessionData.room_id,
+          day_of_week: sessionData.day_of_week,
+          start_time: sessionData.start_time,
+          end_time: sessionData.end_time,
+          session_type: sessionData.session_type,
+          specialization: sessionData.specialization,
+          academic_year: sessionData.academic_year || academicYear,
+          semester: sessionData.semester || semester,
+        },
+        {
+          idempotencyKey,
+        }
+      );
+
+      const created = res?.assignment || res || sessionData;
+      setAssignments((prev) => [...prev, created]);
+      setUndoToast({
+        show: true,
+        message: `تمت إضافة حصة (${sessionData.course_name}) بنجاح إلى جدول التوقيت`,
+        changeLogId: res?.changeLogId || null,
+      });
+    } else {
+      const res = await api.put(
+        `/assignments/${sessionData.id}`,
+        {
+          course_id: sessionData.course_id,
+          professor_id: sessionData.professor_id,
+          group_id: sessionData.group_id,
+          room_id: sessionData.room_id,
+          day_of_week: sessionData.day_of_week,
+          start_time: sessionData.start_time,
+          end_time: sessionData.end_time,
+          session_type: sessionData.session_type,
+          specialization: sessionData.specialization,
+          academic_year: sessionData.academic_year || academicYear,
+          semester: sessionData.semester || semester,
+          version: sessionData.version,
+        },
+        {
+          idempotencyKey,
+        }
+      );
+
+      const updated = res?.assignment || res || sessionData;
+      setAssignments((prev) =>
+        prev.map((a) => (a.id === sessionData.id ? { ...a, ...updated } : a))
+      );
+      setUndoToast({
+        show: true,
+        message: `تم تحديث بيانات حصة (${sessionData.course_name}) بنجاح`,
+        changeLogId: res?.changeLogId || null,
+      });
+    }
+  };
+
+  // Confirm Delete Session
+  const handleConfirmDeleteSession = async () => {
+    if (!deleteConfirmSession) return;
+    setIsDeletingSession(true);
+
+    try {
+      if (isSandboxMode) {
+        deleteSimulatedAssignment(deleteConfirmSession.id);
+        setUndoToast({
+          show: true,
+          message: `⚡ [وضع التجربة] تم حذف حصة (${deleteConfirmSession.course_name}) افتراضياً`,
+          changeLogId: null,
+        });
+        setDeleteConfirmSession(null);
+        return;
+      }
+
+      const res = await api.delete(`/assignments/${deleteConfirmSession.id}`);
+      setAssignments((prev) => prev.filter((a) => a.id !== deleteConfirmSession.id));
+      setUndoToast({
+        show: true,
+        message: `تم حذف حصة (${deleteConfirmSession.course_name}) من الجدول بنجاح`,
+        changeLogId: res?.changeLogId || null,
+      });
+      setDeleteConfirmSession(null);
+    } catch (err: any) {
+      console.error('Failed to delete assignment:', err);
+      alert(err?.messageAr || err?.message || 'فشل حذف الحصة من الخادم');
+    } finally {
+      setIsDeletingSession(false);
+    }
+  };
+
   return (
     <div>
       {/* 1. Main Interactive Screen (Completely hidden in @media print) */}
@@ -1359,7 +1522,16 @@ export default function SchedulePage() {
                           onDragEnter={(e) => isDndEnabled && handleDragEnter(e, day.id, slot)}
                           onDragLeave={(e) => isDndEnabled && handleDragLeave(e, day.id, slot)}
                           onDrop={(e) => isDndEnabled && handleDrop(e, day.id, slot)}
-                          className={`p-1.5 border-l border-slate-200 align-top min-h-[105px] h-[115px] w-[150px] relative transition-all ${cellBg}`}
+                          onClick={() => {
+                            if (!draggedSession && cellSessions.length === 0) {
+                              handleOpenAddSession(day.id, slot);
+                            }
+                          }}
+                          className={`p-1.5 border-l border-slate-200 align-top min-h-[105px] h-[115px] w-[150px] relative transition-all group/cell ${
+                            !draggedSession && cellSessions.length === 0
+                              ? 'cursor-pointer hover:bg-slate-50/80'
+                              : ''
+                          } ${cellBg}`}
                         >
                           {/* Live drop status banner inside cell */}
                           {isOverThisCell && (
@@ -1389,7 +1561,21 @@ export default function SchedulePage() {
                                   خانة شاغرة
                                 </span>
                               ) : (
-                                '—'
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="text-slate-300 text-xs">—</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenAddSession(day.id, slot);
+                                    }}
+                                    className="opacity-0 group-hover/cell:opacity-100 transition-opacity flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs"
+                                    title="إضافة حصة جديدة في هذا التوقيت"
+                                  >
+                                    <Plus className="w-3 h-3 text-blue-600" />
+                                    <span>إضافة</span>
+                                  </button>
+                                </div>
                               )}
                             </div>
                           ) : (
@@ -1428,7 +1614,7 @@ export default function SchedulePage() {
                                       }`}
                                     >
                                       <div className="flex items-center justify-between gap-1 mb-0.5">
-                                        <div className="flex items-center gap-1 truncate max-w-[85%]">
+                                        <div className="flex items-center gap-1 truncate max-w-[75%]">
                                           {isDndEnabled && (
                                             <GripVertical className="w-3 h-3 text-slate-400 shrink-0 opacity-60 group-hover:opacity-100 group-hover:text-blue-600 transition-opacity" />
                                           )}
@@ -1436,17 +1622,60 @@ export default function SchedulePage() {
                                             {session.course_name || 'مقرر بدون اسم'}
                                           </span>
                                         </div>
-                                        <span
-                                          className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
-                                            isLecture
-                                              ? 'bg-blue-200 text-blue-900'
-                                              : isTD
-                                              ? 'bg-emerald-200 text-emerald-900'
-                                              : 'bg-amber-200 text-amber-900'
-                                          }`}
-                                        >
-                                          {isLecture ? 'محاضرة' : isTD ? 'TD' : 'TP'}
-                                        </span>
+
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {/* Quick Edit & Delete buttons on card hover */}
+                                          <div className="hidden group-hover:flex items-center gap-0.5">
+                                            <span
+                                              role="button"
+                                              tabIndex={0}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenEditSession(session);
+                                              }}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.stopPropagation();
+                                                  handleOpenEditSession(session);
+                                                }
+                                              }}
+                                              className="p-1 rounded bg-white text-blue-700 hover:bg-blue-100 shadow-2xs cursor-pointer"
+                                              title="تعديل الحصة"
+                                            >
+                                              <Edit className="w-2.5 h-2.5" />
+                                            </span>
+                                            <span
+                                              role="button"
+                                              tabIndex={0}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenDeleteSession(session);
+                                              }}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                  e.stopPropagation();
+                                                  handleOpenDeleteSession(session);
+                                                }
+                                              }}
+                                              className="p-1 rounded bg-white text-rose-700 hover:bg-rose-100 shadow-2xs cursor-pointer"
+                                              title="حذف الحصة"
+                                            >
+                                              <Trash2 className="w-2.5 h-2.5" />
+                                            </span>
+                                          </div>
+
+                                          <span
+                                            className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
+                                              isLecture
+                                                ? 'bg-blue-200 text-blue-900'
+                                                : isTD
+                                                ? 'bg-emerald-200 text-emerald-900'
+                                                : 'bg-amber-200 text-amber-900'
+                                            }`}
+                                          >
+                                            {isLecture ? 'محاضرة' : isTD ? 'TD' : 'TP'}
+                                          </span>
+                                        </div>
                                       </div>
                                       <div className="text-[11px] text-slate-700 truncate mt-0.5">
                                         {session.professor_name || 'غير محدد'}
@@ -1463,6 +1692,20 @@ export default function SchedulePage() {
                                   </div>
                                 );
                               })}
+
+                              {/* Subtle button to add parallel session */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenAddSession(day.id, slot);
+                                }}
+                                className="w-full py-1 text-[10px] font-semibold text-slate-400 hover:text-blue-700 hover:bg-blue-50/70 rounded-lg border border-dashed border-transparent hover:border-blue-200 transition-all flex items-center justify-center gap-1 opacity-0 group-hover/cell:opacity-100"
+                                title="إضافة حصة أخرى موازية في هذا التوقيت"
+                              >
+                                <Plus className="w-2.5 h-2.5" />
+                                <span>حصة إضافية</span>
+                              </button>
                             </div>
                           )}
                         </td>
@@ -1532,8 +1775,36 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-              <Button variant="primary" size="sm" onClick={() => setActiveSession(null)}>
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const sess = activeSession;
+                    setActiveSession(null);
+                    handleOpenEditSession(sess);
+                  }}
+                  className="gap-1.5 text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>تعديل الحصة</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const sess = activeSession;
+                    setActiveSession(null);
+                    handleOpenDeleteSession(sess);
+                  }}
+                  className="gap-1.5 text-xs text-rose-700 border-rose-200 hover:bg-rose-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف الحصة</span>
+                </Button>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setActiveSession(null)}>
                 إغلاق
               </Button>
             </div>
@@ -1828,6 +2099,71 @@ export default function SchedulePage() {
             <div className="pt-2 flex justify-center">
               <Button variant="primary" size="sm" onClick={() => setConflictAlert(null)}>
                 حسناً، فهمت
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      {/* 8. Direct Add / Edit Session Modal */}
+      <SessionFormModal
+        open={isSessionFormOpen}
+        onClose={() => setIsSessionFormOpen(false)}
+        mode={sessionFormMode}
+        session={sessionFormSelectedSession}
+        defaultDayId={formDefaultDayId}
+        defaultSlot={formDefaultSlot}
+        defaultRoomId={filterType === 'room' && selectedEntityId !== 'all' ? Number(selectedEntityId) : undefined}
+        defaultGroupId={filterType === 'group' && selectedEntityId !== 'all' ? Number(selectedEntityId) : undefined}
+        defaultSpecialization={selectedSpecialization !== 'all' ? selectedSpecialization : undefined}
+        courses={courses}
+        professors={professors}
+        rooms={rooms}
+        groups={groups}
+        academicYear={academicYear}
+        semester={semester}
+        existingAssignments={effectiveAssignments}
+        onSave={handleSaveSession}
+        isSandboxMode={isSandboxMode}
+      />
+
+      {/* 9. Delete Confirmation Modal */}
+      <Dialog open={!!deleteConfirmSession} onClose={() => !isDeletingSession && setDeleteConfirmSession(null)} size="sm">
+        {deleteConfirmSession && (
+          <div className="p-6 bg-white rounded-2xl max-w-sm w-full space-y-4 text-right">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6 text-rose-600" />
+            </div>
+            <DialogTitle className="text-center text-base font-bold text-slate-900">
+              تأكيد حذف الحصة الدراسية
+            </DialogTitle>
+            <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
+              هل أنت متأكد من حذف حصة <span className="font-bold text-slate-900">({deleteConfirmSession.course_name})</span> المبرمجة للفوج <span className="font-bold text-slate-900">({deleteConfirmSession.group_name})</span> يوم {DAYS.find((d) => d.id === normalizeDay(deleteConfirmSession.day_of_week))?.name} ({deleteConfirmSession.start_time} - {deleteConfirmSession.end_time})؟
+            </DialogDescription>
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-tight">
+              {isSandboxMode
+                ? '⚡ أنت في وضع التجربة: سيتم حذف الحصة محلياً فقط دون المساس بقاعدة البيانات الحية.'
+                : 'سيتم حذف الحصة مع إمكانية التراجع الفوري خلال 24 ساعة عبر سجل التغييرات.'}
+            </div>
+            <div className="pt-2 flex items-center justify-between gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirmSession(null)}
+                disabled={isDeletingSession}
+                className="text-xs"
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleConfirmDeleteSession}
+                disabled={isDeletingSession}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingSession ? 'جاري الحذف...' : 'تأكيد الحذف'}</span>
               </Button>
             </div>
           </div>

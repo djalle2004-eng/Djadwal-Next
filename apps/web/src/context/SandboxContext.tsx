@@ -25,14 +25,18 @@ export interface Assignment {
   [key: string]: any;
 }
 
+export type SimulatedActionType = 'move' | 'create' | 'update' | 'delete';
+
 export interface SimulatedChange {
   id: string;
+  actionType?: SimulatedActionType;
   timestamp: number;
   assignmentId: number;
   courseName: string;
   groupName: string;
   professorName: string;
   roomName: string;
+  details?: any;
   from: {
     day: number;
     dayName: string;
@@ -91,6 +95,9 @@ export interface SandboxContextType {
     toRoomId?: number;
     toRoomName?: string;
   }) => boolean;
+  addSimulatedAssignment: (assignmentData: Omit<Assignment, 'id'>) => Assignment;
+  updateSimulatedAssignment: (id: number, updatedData: Partial<Assignment>) => boolean;
+  deleteSimulatedAssignment: (id: number) => boolean;
   undo: () => void;
   redo: () => void;
   discardChanges: () => void;
@@ -286,6 +293,179 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return true;
   }, [stagedAssignments]);
 
+  // Add a simulated assignment in the sandbox
+  const addSimulatedAssignment = useCallback((assignmentData: Omit<Assignment, 'id'>): Assignment => {
+    const tempId = -Math.floor(Date.now() / 1000 + Math.random() * 10000);
+    const newSession: Assignment = {
+      ...assignmentData,
+      id: tempId,
+      version: 1,
+    };
+
+    setHistory((prev) => [...prev, JSON.parse(JSON.stringify(stagedAssignments))]);
+    setFuture([]);
+
+    const dayNum = Number(newSession.day_of_week);
+    const dayName = DAYS.find((d) => d.id === dayNum)?.name || 'غير محدد';
+
+    const changeRecord: SimulatedChange = {
+      id: `add-${tempId}`,
+      actionType: 'create',
+      timestamp: Date.now(),
+      assignmentId: tempId,
+      courseName: newSession.course_name || 'مقرر جديد',
+      groupName: newSession.group_name || 'فوج',
+      professorName: newSession.professor_name || 'أستاذ',
+      roomName: newSession.room_name || 'قاعة',
+      details: {
+        course_id: newSession.course_id,
+        professor_id: newSession.professor_id,
+        group_id: newSession.group_id,
+        room_id: newSession.room_id,
+        day_of_week: newSession.day_of_week,
+        start_time: newSession.start_time,
+        end_time: newSession.end_time,
+        session_type: newSession.session_type,
+        specialization: newSession.specialization,
+        academic_year: newSession.academic_year,
+        semester: newSession.semester,
+      },
+      from: {
+        day: dayNum,
+        dayName: 'غير مبرمج',
+        startTime: '—',
+        endTime: '—',
+      },
+      to: {
+        day: dayNum,
+        dayName,
+        startTime: newSession.start_time,
+        endTime: newSession.end_time,
+        roomId: newSession.room_id,
+        roomName: newSession.room_name,
+      },
+    };
+
+    setStagedAssignments((prev) => [...prev, newSession]);
+    setSimulatedChanges((prev) => [...prev, changeRecord]);
+
+    return newSession;
+  }, [stagedAssignments]);
+
+  // Update a simulated assignment in the sandbox
+  const updateSimulatedAssignment = useCallback((id: number, updatedData: Partial<Assignment>): boolean => {
+    const existing = stagedAssignments.find((a) => a.id === id);
+    if (!existing) return false;
+
+    setHistory((prev) => [...prev, JSON.parse(JSON.stringify(stagedAssignments))]);
+    setFuture([]);
+
+    const merged: Assignment = {
+      ...existing,
+      ...updatedData,
+      id,
+    };
+
+    const origDayNum = Number(existing.day_of_week);
+    const newDayNum = Number(merged.day_of_week);
+
+    const changeRecord: SimulatedChange = {
+      id: `update-${id}-${Date.now()}`,
+      actionType: 'update',
+      timestamp: Date.now(),
+      assignmentId: id,
+      courseName: merged.course_name || existing.course_name || 'مقرر',
+      groupName: merged.group_name || existing.group_name || 'فوج',
+      professorName: merged.professor_name || existing.professor_name || 'أستاذ',
+      roomName: merged.room_name || existing.room_name || 'قاعة',
+      details: {
+        course_id: merged.course_id,
+        professor_id: merged.professor_id,
+        group_id: merged.group_id,
+        room_id: merged.room_id,
+        day_of_week: merged.day_of_week,
+        start_time: merged.start_time,
+        end_time: merged.end_time,
+        session_type: merged.session_type,
+        specialization: merged.specialization,
+        academic_year: merged.academic_year,
+        semester: merged.semester,
+        version: merged.version,
+      },
+      from: {
+        day: origDayNum,
+        dayName: DAYS.find((d) => d.id === origDayNum)?.name || '',
+        startTime: existing.start_time,
+        endTime: existing.end_time,
+        roomId: existing.room_id,
+        roomName: existing.room_name,
+      },
+      to: {
+        day: newDayNum,
+        dayName: DAYS.find((d) => d.id === newDayNum)?.name || '',
+        startTime: merged.start_time,
+        endTime: merged.end_time,
+        roomId: merged.room_id,
+        roomName: merged.room_name,
+      },
+    };
+
+    setStagedAssignments((prev) => prev.map((a) => (a.id === id ? merged : a)));
+    setSimulatedChanges((prev) => {
+      const filtered = prev.filter((c) => c.assignmentId !== id);
+      return [...filtered, changeRecord];
+    });
+
+    return true;
+  }, [stagedAssignments]);
+
+  // Delete a simulated assignment in the sandbox
+  const deleteSimulatedAssignment = useCallback((id: number): boolean => {
+    const existing = stagedAssignments.find((a) => a.id === id);
+    if (!existing) return false;
+
+    setHistory((prev) => [...prev, JSON.parse(JSON.stringify(stagedAssignments))]);
+    setFuture([]);
+
+    const dayNum = Number(existing.day_of_week);
+
+    const changeRecord: SimulatedChange = {
+      id: `delete-${id}-${Date.now()}`,
+      actionType: 'delete',
+      timestamp: Date.now(),
+      assignmentId: id,
+      courseName: existing.course_name || 'مقرر',
+      groupName: existing.group_name || 'فوج',
+      professorName: existing.professor_name || 'أستاذ',
+      roomName: existing.room_name || 'قاعة',
+      from: {
+        day: dayNum,
+        dayName: DAYS.find((d) => d.id === dayNum)?.name || '',
+        startTime: existing.start_time,
+        endTime: existing.end_time,
+        roomId: existing.room_id,
+        roomName: existing.room_name,
+      },
+      to: {
+        day: dayNum,
+        dayName: 'محذوفة (إلغاء الحصة)',
+        startTime: '—',
+        endTime: '—',
+      },
+    };
+
+    setStagedAssignments((prev) => prev.filter((a) => a.id !== id));
+    setSimulatedChanges((prev) => {
+      if (id < 0) {
+        return prev.filter((c) => c.assignmentId !== id);
+      }
+      const filtered = prev.filter((c) => c.assignmentId !== id);
+      return [...filtered, changeRecord];
+    });
+
+    return true;
+  }, [stagedAssignments]);
+
   const undo = useCallback(() => {
     if (history.length === 0) return;
 
@@ -375,16 +555,26 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setCommitProgress({ current: i + 1, total: simulatedChanges.length });
 
       try {
-        const payload = {
-          day_of_week: change.to.day,
-          start_time: change.to.startTime,
-          end_time: change.to.endTime,
-          room_id: change.to.roomId,
-        };
+        if (change.actionType === 'delete') {
+          if (change.assignmentId > 0) {
+            await api.delete(`/assignments/${change.assignmentId}`);
+          }
+        } else if (change.actionType === 'create') {
+          await api.post('/assignments', change.details);
+        } else if (change.actionType === 'update') {
+          await api.put(`/assignments/${change.assignmentId}`, change.details);
+        } else {
+          const payload = change.details || {
+            day_of_week: change.to.day,
+            start_time: change.to.startTime,
+            end_time: change.to.endTime,
+            room_id: change.to.roomId,
+          };
 
-        await api.post(`/assignments/${change.assignmentId}/move`, payload, {
-          skipConflictAlert: true,
-        });
+          await api.post(`/assignments/${change.assignmentId}/move`, payload, {
+            skipConflictAlert: true,
+          });
+        }
 
         appliedCount++;
       } catch (err: any) {
@@ -392,7 +582,7 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
         errors.push({
           assignmentId: change.assignmentId,
           courseName: change.courseName,
-          error: err?.message || 'فشل نقل الحصة',
+          error: err?.message || 'فشل تطبيق التعديل',
           statusCode: err?.statusCode,
         });
       }
@@ -544,6 +734,9 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
       exitSandboxMode,
       syncLiveAssignments,
       applySimulatedMove,
+      addSimulatedAssignment,
+      updateSimulatedAssignment,
+      deleteSimulatedAssignment,
       undo,
       redo,
       discardChanges,
@@ -570,6 +763,9 @@ export const SandboxProvider: React.FC<{ children: React.ReactNode }> = ({ child
       exitSandboxMode,
       syncLiveAssignments,
       applySimulatedMove,
+      addSimulatedAssignment,
+      updateSimulatedAssignment,
+      deleteSimulatedAssignment,
       undo,
       redo,
       discardChanges,
