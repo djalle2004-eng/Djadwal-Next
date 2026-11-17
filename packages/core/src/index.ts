@@ -8,3 +8,4 @@ export * from './repositories/index.js';
 export * from './api-schema.js';
 export * from './scheduling/index.js';
 export * from './constants/professor-ranks.js';
+export * from './excel/professor-excel.js';

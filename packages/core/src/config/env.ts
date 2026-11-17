@@ -101,6 +101,11 @@ export const envSchema = z.object({
   // P14: Professor Academic Rank History & Archive Isolation Flags
   FEATURE_PROFESSOR_RANK_HISTORY: z
     .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
+    .default(true),
+
+  // P15: Professor Excel Export & Import Engine Flags
+  FEATURE_PROFESSOR_EXCEL_IMPORT_EXPORT: z
+    .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
     .default(true)
 });
 

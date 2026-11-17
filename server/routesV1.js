@@ -76,6 +76,10 @@ router.post(['/catalog/groups/:id/restore', '/groups/:id/restore'], groupModule.
 
 // 7. Professors
 router.get(['/professors/ranks', '/catalog/professors/ranks'], profModule.getRanksList);
+router.get('/professors/export', profModule.exportProfessorsExcel);
+router.get('/professors/template', profModule.downloadProfessorsTemplate);
+router.post('/professors/import/preview', profModule.previewProfessorsImport);
+router.post('/professors/import', profModule.commitProfessorsImport);
 router.get('/professors', profModule.listProfessors);
 router.post('/professors', validateBody(schemas.createProfessorSchema), profModule.createProfessor);
 router.get('/professors/:id/history', profModule.getProfessorHistory);

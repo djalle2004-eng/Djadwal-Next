@@ -1,11 +1,17 @@
 const { professorsRepository, professorAcademicProfilesRepository } = require('../../../packages/core/src/repositories/index.js');
 const { unitOfWork } = require('../../../packages/core/src/unitOfWork.js');
 const { executeQuery } = require('../../database.js');
+const XLSX = require('xlsx');
 const {
   OFFICIAL_ACADEMIC_RANKS,
   normalizeAcademicRank,
   getRankDefinition
 } = require('../../../packages/core/src/constants/professor-ranks.js');
+const {
+  dryRunProfessorsImport,
+  buildProfessorsExportWorkbook,
+  buildProfessorsTemplateWorkbook
+} = require('../../../packages/core/src/excel/professor-excel.js');
 
 async function listProfessors(req, res) {
   try {
@@ -282,10 +288,10 @@ async function getRanksList(req, res) {
   });
 }
 
-async function recordHistoricalProfile(profId, academicYear, rank, isTemp, department = '', notes = '') {
+async function recordHistoricalProfile(profId, academicYear, rank, isTemp, department = '', notes = '', context = {}) {
   // Upsert into professor_academic_profiles
   const def = getRankDefinition(rank);
-  const rows = await executeQuery(`
+  const sql = `
     INSERT INTO professor_academic_profiles (
       professor_id, academic_year, academic_rank, is_temporary, weekly_statutory_quota, department, notes
     ) VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -297,7 +303,8 @@ async function recordHistoricalProfile(profId, academicYear, rank, isTemp, depar
         notes = COALESCE(EXCLUDED.notes, professor_academic_profiles.notes),
         updated_at = now()
     RETURNING *
-  `, [
+  `;
+  const params = [
     Number(profId),
     academicYear,
     rank,
@@ -305,9 +312,192 @@ async function recordHistoricalProfile(profId, academicYear, rank, isTemp, depar
     def.statutoryQuotaHours,
     department || '',
     notes || ''
-  ]);
+  ];
 
+  if (context.uow) {
+    const res = await context.uow.query(sql, params);
+    return res.rows ? res.rows[0] : res[0];
+  }
+
+  const rows = await executeQuery(sql, params);
   return rows[0];
+}
+
+/**
+ * P15: Export professors to formatted .xlsx file
+ */
+async function exportProfessorsExcel(req, res) {
+  try {
+    const withArchived = req.query.withArchived === 'true';
+    const whereClauses = [];
+    if (!withArchived) {
+      whereClauses.push('deleted_at IS NULL');
+    }
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const rows = await executeQuery(`SELECT * FROM professors ${whereStr} ORDER BY name ASC`);
+    const wb = buildProfessorsExportWorkbook(rows);
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const filename = `professors-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('[ExportProfessorsExcel] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * P15: Download blank template for professor import
+ */
+async function downloadProfessorsTemplate(req, res) {
+  try {
+    const wb = buildProfessorsTemplateWorkbook();
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="professors-template.xlsx"');
+    res.send(buffer);
+  } catch (err) {
+    console.error('[DownloadProfessorsTemplate] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * P15: Dry-Run preview for professor Excel import
+ */
+async function previewProfessorsImport(req, res) {
+  try {
+    if (process.env.FEATURE_PROFESSOR_EXCEL_IMPORT_EXPORT === 'false') {
+      return res.status(403).json({
+        error: {
+          code: 'FEATURE_DISABLED',
+          message_ar: 'ميزة استيراد وتصدير الأساتذة عبر Excel معطلة حالياً عبر إعدادات البيئة.'
+        }
+      });
+    }
+
+    const { rows } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'لم يتم إرسال أي صفوف صالحة للمعاينة' });
+    }
+
+    const existing = await executeQuery('SELECT * FROM professors WHERE deleted_at IS NULL');
+    const dryRun = dryRunProfessorsImport(rows, existing);
+
+    res.json({
+      success: true,
+      ...dryRun
+    });
+  } catch (err) {
+    console.error('[PreviewProfessorsImport] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * P15: Atomic commit for professor Excel import via UnitOfWork
+ */
+async function commitProfessorsImport(req, res) {
+  try {
+    if (process.env.FEATURE_PROFESSOR_EXCEL_IMPORT_EXPORT === 'false') {
+      return res.status(403).json({
+        error: {
+          code: 'FEATURE_DISABLED',
+          message_ar: 'ميزة استيراد وتصدير الأساتذة عبر Excel معطلة حالياً عبر إعدادات البيئة.'
+        }
+      });
+    }
+
+    const { rows, skipErrors = false, academicYear = '2026-2027' } = req.body;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'قائمة الأساتذة فارغة' });
+    }
+
+    const importStats = await unitOfWork(async (uow) => {
+      // 1. Fetch active professors inside the unit of work transaction
+      const existingRes = await uow.query('SELECT * FROM professors WHERE deleted_at IS NULL');
+      const existing = existingRes.rows || existingRes;
+
+      // 2. Perform dry run analysis
+      const dryRun = dryRunProfessorsImport(rows, existing);
+
+      if (dryRun.summary.errors > 0 && !skipErrors) {
+        throw new Error(`يحتوي الملف على ${dryRun.summary.errors} أخطاء في البيانات. يرجى تفعيل خيار تجاوز الأخطاء أو تصحيح الملف.`);
+      }
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      for (const item of dryRun.rows) {
+        if (item.action === 'error' || item.action === 'unchanged') {
+          skippedCount++;
+          continue;
+        }
+
+        const rankDef = getRankDefinition(item.academic_rank);
+        const profPayload = {
+          name: item.name,
+          email: item.email || null,
+          phone: item.phone || null,
+          title: item.rank_label_arabic || rankDef.labelArabic,
+          academic_title: item.rank_label_arabic || rankDef.labelArabic,
+          academic_rank: item.academic_rank,
+          is_temporary: item.is_temporary,
+          specialization: item.specialization || null
+        };
+
+        if (item.action === 'create') {
+          const created = await professorsRepository.create(profPayload, { uow, userId: req.user?.id });
+          if (academicYear && created?.id) {
+            await recordHistoricalProfile(
+              created.id,
+              academicYear,
+              item.academic_rank,
+              item.is_temporary,
+              item.department || '',
+              'استيراد جماعي عبر ملف Excel',
+              { uow }
+            );
+          }
+          createdCount++;
+        } else if (item.action === 'update' && item.id) {
+          await professorsRepository.update(item.id, profPayload, { uow, userId: req.user?.id });
+          if (academicYear) {
+            await recordHistoricalProfile(
+              item.id,
+              academicYear,
+              item.academic_rank,
+              item.is_temporary,
+              item.department || '',
+              'تحديث جماعي عبر ملف Excel',
+              { uow }
+            );
+          }
+          updatedCount++;
+        }
+      }
+
+      return {
+        createdCount,
+        updatedCount,
+        skippedCount,
+        totalProcessed: createdCount + updatedCount
+      };
+    });
+
+    res.json({
+      success: true,
+      message_ar: `تم استيراد ${importStats.createdCount} أستاذ جديد وتحديث ${importStats.updatedCount} بنجاح.`,
+      ...importStats
+    });
+  } catch (err) {
+    console.error('[CommitProfessorsImport] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 }
 
 async function bulkImportProfessors(req, res) {
@@ -360,5 +550,9 @@ module.exports = {
   getProfessorHistory,
   recordProfessorHistoryEndpoint,
   getRanksList,
-  bulkImportProfessors
+  bulkImportProfessors,
+  exportProfessorsExcel,
+  downloadProfessorsTemplate,
+  previewProfessorsImport,
+  commitProfessorsImport
 };

@@ -90,7 +90,12 @@ const envSchema = z.object({
     .default(true),
 
   // P8: Modernized API v1 & Strangler Proxy Flags
-  API_ROUTING_DEFAULT: z.enum(['legacy', 'v1', 'shadow']).default('legacy')
+  API_ROUTING_DEFAULT: z.enum(['legacy', 'v1', 'shadow']).default('legacy'),
+
+  // P15: Professor Excel Export & Import Engine Flags
+  FEATURE_PROFESSOR_EXCEL_IMPORT_EXPORT: z
+    .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
+    .default(true)
 });
 
 let hasLoggedStatus = false;

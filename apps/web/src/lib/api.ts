@@ -240,6 +240,23 @@ export const api = {
   restore: (entityType: string, id: number | string) =>
     apiFetch(`/${entityType}/${id}/restore`, { method: 'POST' }),
 
+  // P15 Professors Excel Import / Export Helpers
+  previewProfessorsImport: (rows: any[]) =>
+    apiFetch<any>('/professors/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
+
+  commitProfessorsImport: (
+    data: { rows: any[]; skipErrors?: boolean; academicYear?: string },
+    idempotencyKey?: string
+  ) =>
+    apiFetch<any>('/professors/import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      idempotencyKey,
+    }),
+
   // Assignments Helpers
   checkAssignmentConflicts: (data: any) =>
     apiFetch<any>('/assignments/check-conflicts', { method: 'POST', body: JSON.stringify(data) }),

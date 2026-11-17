@@ -144,6 +144,10 @@ router.delete('/groups/:id', authorize('groups', 'delete'), groupModule.deleteGr
 // 6. Professors (Strangler Proxy)
 // ==========================================
 router.get('/professors', authorize('professors', 'view'), createStranglerProxy('professors', profModule.listProfessors, profModule.listProfessors));
+router.get('/professors/export', authorize('professors', 'view'), profModule.exportProfessorsExcel);
+router.get('/professors/template', authorize('professors', 'view'), profModule.downloadProfessorsTemplate);
+router.post('/professors/import/preview', authorize('professors', 'create'), profModule.previewProfessorsImport);
+router.post('/professors/import', authorize('professors', 'create'), profModule.commitProfessorsImport);
 router.get('/professors/:id', authorize('professors', 'view'), profModule.getProfessor);
 router.post('/professors', authorize('professors', 'create'), profModule.createProfessor);
 router.put('/professors/:id', authorize('professors', 'update'), profModule.updateProfessor);
