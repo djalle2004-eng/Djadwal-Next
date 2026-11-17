@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import * as XLSX from 'xlsx';
 import {
   Users,
   Search,
@@ -25,7 +26,9 @@ import {
   Clock,
   Briefcase,
   Check,
-  ChevronDown
+  ChevronDown,
+  FileSpreadsheet,
+  UploadCloud
 } from 'lucide-react';
 import {
   Button,
@@ -42,9 +45,11 @@ import {
   normalizeAcademicRank,
   getRankDefinition,
 } from '@djadwal/core/constants/professor-ranks';
+import { buildProfessorsExportWorkbook } from '@djadwal/core/excel/professor-excel';
 import { api, ApiError } from '@/lib/api';
 import DeleteImpactModal from '@/components/DeleteImpactModal';
 import UndoToast from '@/components/UndoToast';
+import ImportProfessorsModal from '@/components/ImportProfessorsModal';
 
 interface Professor {
   id: number;
@@ -121,6 +126,9 @@ export default function ProfessorsPage() {
   const [newHistoryRank, setNewHistoryRank] = useState<OfficialAcademicRank>('lecturer_b');
   const [newHistoryTemporary, setNewHistoryTemporary] = useState(false);
   const [savingHistory, setSavingHistory] = useState(false);
+
+  // Import Professors Modal State (P15)
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const loadProfessors = async () => {
     setLoading(true);
@@ -377,6 +385,27 @@ export default function ProfessorsPage() {
     document.body.removeChild(link);
   };
 
+  // Export to Excel (P15)
+  const handleExportExcel = () => {
+    try {
+      const wb = buildProfessorsExportWorkbook(filteredProfessors);
+      const filename = `professors-list-${activeTab}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } catch (err: any) {
+      console.error('Export Excel failed:', err);
+      // Fallback to backend export
+      window.location.href = `/api/v1/professors/export?withArchived=${activeTab === 'archived'}`;
+    }
+  };
+
+  const handleImportSuccess = (message: string) => {
+    setUndoToast({
+      show: true,
+      message,
+    });
+    loadProfessors();
+  };
+
   // Filtered List
   const filteredProfessors = useMemo(() => {
     let baseList = professors;
@@ -441,6 +470,30 @@ export default function ProfessorsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Export Excel (P15) */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            className="gap-1.5 text-xs border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+            title="تنزيل جدول الأساتذة الحالي بتنسيق Excel منسق مع دليل الرتب الرسمية"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>تنزيل ملف الأساتذة (Excel)</span>
+          </Button>
+
+          {/* Import Excel (P15) */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowImportModal(true)}
+            className="gap-1.5 text-xs border-blue-300 text-blue-800 hover:bg-blue-50"
+            title="استيراد وتحديث قائمة الأساتذة عبر ملف Excel مع المعاينة الذكية والتثبيت الذري"
+          >
+            <UploadCloud className="w-4 h-4 text-blue-600" />
+            <span>استيراد من Excel</span>
+          </Button>
+
           {/* Export CSV */}
           <Button
             variant="outline"
@@ -1038,6 +1091,13 @@ export default function ProfessorsPage() {
         onUndo={handleUndo}
         onClose={() => setUndoToast({ show: false, message: '' })}
         isLoading={isUndoing}
+      />
+
+      {/* 8. P15: Excel Import & Dry-Run Modal */}
+      <ImportProfessorsModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={handleImportSuccess}
       />
     </div>
   );
