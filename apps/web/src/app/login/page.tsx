@@ -63,8 +63,12 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 border border-slate-100">
         <div className="text-center space-y-2 mb-8">
-          <div className="inline-flex p-3.5 bg-indigo-50 text-indigo-600 rounded-2xl mb-2">
-            <Lock className="w-7 h-7" />
+          <div className="inline-flex mb-3">
+            <img
+              src="/logo-circle.png"
+              alt="شعار جدول"
+              className="w-20 h-20 mx-auto object-contain drop-shadow-md"
+            />
           </div>
           <h1 className="text-2xl font-bold text-slate-900">تسجيل الدخول</h1>
           <p className="text-sm text-slate-500">

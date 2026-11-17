@@ -13,7 +13,13 @@ export const metadata: Metadata = {
     title: 'Djadwal',
   },
   icons: {
-    icon: '/icons/icon.svg',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/logo-circle.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
     apple: '/icons/icon-192.png',
   },
 };
