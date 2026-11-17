@@ -21,6 +21,10 @@ import {
   Check,
   Eye,
   AlertCircle,
+  GripVertical,
+  Move,
+  CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   Button,
@@ -35,6 +39,7 @@ import {
   DialogDescription,
 } from '@djadwal/ui';
 import { api } from '@/lib/api';
+import UndoToast from '@/components/UndoToast';
 import { TIME_SLOTS, DAYS, normalizeDay, matchesSlot } from '@/constants/timeSlots';
 
 interface Assignment {
@@ -84,6 +89,29 @@ export default function SchedulePage() {
   const [hideEmptyDaysInPrint, setHideEmptyDaysInPrint] = useState(true);
   const [copiedNotification, setCopiedNotification] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Drag & Drop State
+  const [isDndEnabled, setIsDndEnabled] = useState(true);
+  const [draggedSession, setDraggedSession] = useState<Assignment | null>(null);
+  const [dragOverCell, setDragOverCell] = useState<{ dayId: number; slotId: number } | null>(null);
+  const [activeConflict, setActiveConflict] = useState<string | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
+  const [undoToast, setUndoToast] = useState<{
+    show: boolean;
+    message: string;
+    changeLogId?: number | null;
+  }>({
+    show: false,
+    message: '',
+    changeLogId: null,
+  });
+  const [isUndoing, setIsUndoing] = useState(false);
+  const [conflictAlert, setConflictAlert] = useState<{
+    isOpen: boolean;
+    reason: string;
+    session?: Assignment;
+    conflictingSession?: Assignment;
+  } | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -423,6 +451,338 @@ export default function SchedulePage() {
     setTimeout(() => setCopiedNotification(false), 2000);
   };
 
+  // Auto-dismiss undo toast after 6 seconds
+  useEffect(() => {
+    if (undoToast.show) {
+      const timer = setTimeout(() => {
+        setUndoToast((prev) => ({ ...prev, show: false }));
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [undoToast.show]);
+
+  /**
+   * Instant Conflict Detection for Drag & Drop
+   * Computes professor, room, group, and lecture vs. subgroup collisions in < 1ms.
+   */
+  interface ConflictResult {
+    hasConflict: boolean;
+    reason?: string;
+    type?: 'professor' | 'room' | 'group' | 'lecture' | 'same_slot';
+    conflictingSession?: Assignment;
+  }
+
+  const checkSlotConflict = (
+    session: Assignment,
+    targetDayId: number,
+    targetSlot: (typeof TIME_SLOTS)[0],
+    targetRoomId?: number
+  ): ConflictResult => {
+    const currentDay = normalizeDay(session.day_of_week);
+    // 1. Same slot and same room: no conflict, it's just the current position
+    if (
+      currentDay === targetDayId &&
+      matchesSlot(session.start_time, targetSlot.start, targetSlot.end, session.end_time) &&
+      (!targetRoomId || targetRoomId === session.room_id)
+    ) {
+      return { hasConflict: false };
+    }
+
+    // Find all assignments in target day and slot (excluding the dragged session itself)
+    const slotAssignments = assignments.filter((a) => {
+      if (a.id === session.id) return false;
+      const aDay = normalizeDay(a.day_of_week);
+      if (aDay !== targetDayId) return false;
+      return matchesSlot(a.start_time, targetSlot.start, targetSlot.end, a.end_time);
+    });
+
+    const targetRoom = targetRoomId !== undefined ? targetRoomId : session.room_id;
+
+    // Check 1: Professor conflict
+    if (session.professor_id) {
+      const profConflict = slotAssignments.find((a) => {
+        if (!a.professor_id || a.professor_id !== session.professor_id) return false;
+        // If same physical room and prof, it's a merged session
+        if (targetRoom && a.room_id === targetRoom) return false;
+        const profName = session.professor_name || '';
+        if (profName.includes('غير معين') || profName === '—') return false;
+        return true;
+      });
+
+      if (profConflict) {
+        return {
+          hasConflict: true,
+          type: 'professor',
+          reason: `تعارض أستاذ: ${session.professor_name || 'الأستاذ'} مبرمج لحصة أخرى (${profConflict.course_name || 'مقرر'} مع ${profConflict.group_name || 'فوج'}) في هذا التوقيت`,
+          conflictingSession: profConflict,
+        };
+      }
+    }
+
+    // Check 2: Room conflict (ignore 'عن بعد' / remote rooms)
+    if (targetRoom) {
+      const roomObj = rooms.find((r) => r.id === targetRoom);
+      const roomName = roomObj?.name || session.room_name || '';
+      if (!roomName.includes('عن بعد')) {
+        const roomConflict = slotAssignments.find((a) => {
+          if (!a.room_id || a.room_id !== targetRoom) return false;
+          const aRoomName = a.room_name || '';
+          if (aRoomName.includes('عن بعد')) return false;
+          return true;
+        });
+
+        if (roomConflict) {
+          return {
+            hasConflict: true,
+            type: 'room',
+            reason: `تعارض قاعة: القاعة (${roomName}) محجوزة بحصة أخرى (${roomConflict.course_name || 'مقرر'} - ${roomConflict.professor_name || 'أستاذ'})`,
+            conflictingSession: roomConflict,
+          };
+        }
+      }
+    }
+
+    // Check 3: Group conflict & Lecture vs Subgroup conflict
+    if (session.group_id) {
+      const sessionGroup = groups.find((g) => g.id === session.group_id);
+      const isSourceLecture =
+        isLectureSession(session) ||
+        sessionGroup?.group_type === 'lecture_group' ||
+        sessionGroup?.name?.toLowerCase().includes('lecture') ||
+        sessionGroup?.name?.includes('محاضرة');
+
+      for (const a of slotAssignments) {
+        // Direct same group conflict
+        if (a.group_id === session.group_id) {
+          return {
+            hasConflict: true,
+            type: 'group',
+            reason: `تعارض فوج: الفوج (${session.group_name || 'المحدد'}) مبرمج لحصة أخرى (${a.course_name || 'مقرر'}) في هذا التوقيت`,
+            conflictingSession: a,
+          };
+        }
+
+        // Check specialization-wide lecture conflict
+        const aGroup = groups.find((g) => g.id === a.group_id);
+        const sameSpec =
+          sessionGroup &&
+          aGroup &&
+          sessionGroup.specialization &&
+          sessionGroup.specialization === aGroup.specialization;
+
+        if (sameSpec) {
+          const isTargetLecture =
+            isLectureSession(a) ||
+            aGroup?.group_type === 'lecture_group' ||
+            aGroup?.name?.toLowerCase().includes('lecture') ||
+            aGroup?.name?.includes('محاضرة');
+
+          if (isSourceLecture) {
+            return {
+              hasConflict: true,
+              type: 'lecture',
+              reason: `تعارض محاضرة: لا يمكن برمجة محاضرة عامة لتخصص (${sessionGroup.specialization}) في وقت توجد به حصة للفوج (${a.group_name})`,
+              conflictingSession: a,
+            };
+          }
+
+          if (isTargetLecture) {
+            return {
+              hasConflict: true,
+              type: 'lecture',
+              reason: `تعارض محاضرة: لا يمكن برمجة حصة للفوج (${session.group_name}) في وقت مخصص لمحاضرة عامة (${a.course_name}) لنفس التخصص`,
+              conflictingSession: a,
+            };
+          }
+        }
+      }
+    }
+
+    return { hasConflict: false };
+  };
+
+  // Drag Event Handlers
+  const handleDragStart = (e: React.DragEvent, session: Assignment) => {
+    e.dataTransfer.setData('text/plain', String(session.id));
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedSession(session);
+    setDragOverCell(null);
+    setActiveConflict(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedSession(null);
+    setDragOverCell(null);
+    setActiveConflict(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, dayId: number, slot: (typeof TIME_SLOTS)[0]) => {
+    e.preventDefault();
+    if (!draggedSession) return;
+
+    const targetRoomId =
+      filterType === 'room' && selectedEntityId !== 'all'
+        ? Number(selectedEntityId)
+        : draggedSession.room_id
+        ? Number(draggedSession.room_id)
+        : undefined;
+
+    const conflict = checkSlotConflict(draggedSession, dayId, slot, targetRoomId);
+
+    if (dragOverCell?.dayId !== dayId || dragOverCell?.slotId !== slot.id) {
+      setDragOverCell({ dayId, slotId: slot.id });
+      setActiveConflict(conflict.hasConflict ? conflict.reason || 'يوجد تعارض في هذه الخانة' : null);
+    }
+
+    if (conflict.hasConflict) {
+      e.dataTransfer.dropEffect = 'none';
+    } else {
+      e.dataTransfer.dropEffect = 'move';
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent, dayId: number, slot: (typeof TIME_SLOTS)[0]) => {
+    e.preventDefault();
+    if (!draggedSession) return;
+
+    const targetRoomId =
+      filterType === 'room' && selectedEntityId !== 'all'
+        ? Number(selectedEntityId)
+        : draggedSession.room_id
+        ? Number(draggedSession.room_id)
+        : undefined;
+
+    const conflict = checkSlotConflict(draggedSession, dayId, slot, targetRoomId);
+    setDragOverCell({ dayId, slotId: slot.id });
+    setActiveConflict(conflict.hasConflict ? conflict.reason || 'يوجد تعارض في هذه الخانة' : null);
+  };
+
+  const handleDragLeave = (e: React.DragEvent, dayId: number, slot: (typeof TIME_SLOTS)[0]) => {
+    if (dragOverCell?.dayId === dayId && dragOverCell?.slotId === slot.id) {
+      setDragOverCell(null);
+      setActiveConflict(null);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetDayId: number, targetSlot: (typeof TIME_SLOTS)[0]) => {
+    e.preventDefault();
+    if (!draggedSession) return;
+
+    const sessionToMove = draggedSession;
+    handleDragEnd();
+
+    const targetRoomId =
+      filterType === 'room' && selectedEntityId !== 'all'
+        ? Number(selectedEntityId)
+        : sessionToMove.room_id
+        ? Number(sessionToMove.room_id)
+        : undefined;
+
+    // 1. Instant Conflict Detection before dropping
+    const conflict = checkSlotConflict(sessionToMove, targetDayId, targetSlot, targetRoomId);
+    if (conflict.hasConflict) {
+      setConflictAlert({
+        isOpen: true,
+        reason: conflict.reason || 'تعذر نقل الحصة لوجود تعارض زمني أو مكاني أو بيداغوجي.',
+        session: sessionToMove,
+        conflictingSession: conflict.conflictingSession,
+      });
+      return;
+    }
+
+    const currentDay = normalizeDay(sessionToMove.day_of_week);
+    if (
+      currentDay === targetDayId &&
+      matchesSlot(sessionToMove.start_time, targetSlot.start, targetSlot.end, sessionToMove.end_time) &&
+      (!targetRoomId || targetRoomId === sessionToMove.room_id)
+    ) {
+      // Same slot, no move needed
+      return;
+    }
+
+    // 2. Optimistic Update (Instantaneous UI response)
+    const previousAssignments = [...assignments];
+    const targetRoomObj = targetRoomId ? rooms.find((r) => r.id === targetRoomId) : null;
+    const updatedAssignment: Assignment = {
+      ...sessionToMove,
+      day_of_week: targetDayId,
+      start_time: targetSlot.start,
+      end_time: targetSlot.end,
+      room_id: targetRoomId,
+      room_name: targetRoomObj ? targetRoomObj.name : sessionToMove.room_name,
+      version: (sessionToMove.version || 1) + 1,
+    };
+
+    setAssignments((prev) =>
+      prev.map((a) => (a.id === sessionToMove.id ? updatedAssignment : a))
+    );
+
+    const targetDayName = DAYS.find((d) => d.id === targetDayId)?.name || 'اليوم المحدد';
+    const successMsg = `تم نقل حصة (${sessionToMove.course_name || 'المقرر'}) بنجاح إلى يوم ${targetDayName} (${targetSlot.label})`;
+
+    // 3. Safe Backend Persistence with OCC (Unit of Work)
+    setIsMoving(true);
+    try {
+      const payload = {
+        day_of_week: targetDayId,
+        start_time: targetSlot.start,
+        end_time: targetSlot.end,
+        room_id: targetRoomId,
+        version: sessionToMove.version !== undefined ? Number(sessionToMove.version) : undefined,
+      };
+
+      const res = await api.post(`/assignments/${sessionToMove.id}/move`, payload, {
+        skipConflictAlert: true,
+      });
+
+      if (res && res.assignment) {
+        setAssignments((prev) =>
+          prev.map((a) => (a.id === sessionToMove.id ? { ...a, ...res.assignment } : a))
+        );
+      }
+
+      setUndoToast({
+        show: true,
+        message: successMsg,
+        changeLogId: res?.changeLogId || null,
+      });
+    } catch (err: any) {
+      console.error('Failed to move assignment on server:', err);
+      // Rollback optimistic update
+      setAssignments(previousAssignments);
+
+      if (err?.statusCode === 409) {
+        setConflictAlert({
+          isOpen: true,
+          reason:
+            'تعارض في التعديل المتزامن (409 Conflict): تم تعديل هذه الحصة بواسطة مستخدم آخر. تم إلغاء النقل وتحديث البيانات.',
+        });
+        await loadData();
+      } else {
+        setConflictAlert({
+          isOpen: true,
+          reason: err?.messageAr || err?.message || 'فشل حفظ نقل الحصة في قاعدة البيانات.',
+        });
+      }
+    } finally {
+      setIsMoving(false);
+    }
+  };
+
+  const handleUndo = async (changeLogId: number) => {
+    setIsUndoing(true);
+    try {
+      await api.post(`/changes/${changeLogId}/undo`);
+      setUndoToast((prev) => ({ ...prev, show: false }));
+      await loadData();
+    } catch (err: any) {
+      console.error('Failed to undo assignment move:', err);
+      alert(err?.messageAr || err?.message || 'تعذر التراجع عن النقل');
+    } finally {
+      setIsUndoing(false);
+    }
+  };
+
   return (
     <div>
       {/* 1. Main Interactive Screen (Completely hidden in @media print) */}
@@ -460,6 +820,21 @@ export default function SchedulePage() {
             <Sparkles className="w-4 h-4" />
             <span>الواجهة المعتمدة (Legacy)</span>
           </a>
+
+          {/* DnD Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setIsDndEnabled(!isDndEnabled)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all border shadow-xs ${
+              isDndEnabled
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 ring-1 ring-emerald-300/50'
+                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+            }`}
+            title={isDndEnabled ? 'تعطيل السحب والإفلات' : 'تفعيل السحب والإفلات'}
+          >
+            <Move className={`w-3.5 h-3.5 ${isDndEnabled ? 'text-emerald-600' : 'text-slate-500'}`} />
+            <span>{isDndEnabled ? 'السحب والإفلات: مفعّل' : 'السحب والإفلات: معطّل'}</span>
+          </button>
 
           {/* Print Button */}
           <Button
@@ -875,14 +1250,59 @@ export default function SchedulePage() {
                     </td>
                     {TIME_SLOTS.map((slot) => {
                       const cellSessions = getCellAssignments(day.id, slot);
+                      const isOverThisCell = isDndEnabled && dragOverCell?.dayId === day.id && dragOverCell?.slotId === slot.id;
+                      const cellConflict = isDndEnabled && draggedSession ? checkSlotConflict(draggedSession, day.id, slot) : null;
+                      const hasConflict = isOverThisCell && cellConflict?.hasConflict;
+                      const isValidDrop = isOverThisCell && !cellConflict?.hasConflict;
+
+                      let cellBg = 'hover:bg-blue-50/20';
+                      if (isValidDrop) {
+                        cellBg = 'bg-emerald-50/90 border-2 border-emerald-500 ring-2 ring-emerald-400/50 shadow-inner';
+                      } else if (hasConflict) {
+                        cellBg = 'bg-rose-50/90 border-2 border-rose-500 ring-2 ring-rose-400/50 shadow-inner cursor-not-allowed';
+                      } else if (isDndEnabled && draggedSession) {
+                        cellBg = 'border-dashed border-slate-300 hover:bg-slate-50/80';
+                      }
+
                       return (
                         <td
                           key={slot.id}
-                          className="p-1.5 border-l border-slate-200 align-top min-h-[100px] h-[105px] w-[150px] relative hover:bg-blue-50/20 transition-colors"
+                          onDragOver={(e) => isDndEnabled && handleDragOver(e, day.id, slot)}
+                          onDragEnter={(e) => isDndEnabled && handleDragEnter(e, day.id, slot)}
+                          onDragLeave={(e) => isDndEnabled && handleDragLeave(e, day.id, slot)}
+                          onDrop={(e) => isDndEnabled && handleDrop(e, day.id, slot)}
+                          className={`p-1.5 border-l border-slate-200 align-top min-h-[105px] h-[115px] w-[150px] relative transition-all ${cellBg}`}
                         >
+                          {/* Live drop status banner inside cell */}
+                          {isOverThisCell && (
+                            <div
+                              className={`absolute inset-x-1 top-1 z-30 p-1.5 rounded-lg text-[10px] font-bold shadow-md flex items-center justify-center gap-1 animate-in fade-in zoom-in-95 pointer-events-none text-white ${
+                                hasConflict ? 'bg-rose-600' : 'bg-emerald-600'
+                              }`}
+                            >
+                              {hasConflict ? (
+                                <>
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{cellConflict?.reason}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>أفلت هنا للنقل</span>
+                                </>
+                              )}
+                            </div>
+                          )}
+
                           {cellSessions.length === 0 ? (
-                            <div className="h-full flex items-center justify-center text-slate-300 font-light select-none">
-                              —
+                            <div className="h-full flex flex-col items-center justify-center text-slate-300 font-light select-none">
+                              {isDndEnabled && draggedSession && !isOverThisCell ? (
+                                <span className="text-[10px] text-slate-400 font-normal border border-dashed border-slate-300 px-2 py-1 rounded-md">
+                                  خانة شاغرة
+                                </span>
+                              ) : (
+                                '—'
+                              )}
                             </div>
                           ) : (
                             <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
@@ -892,48 +1312,67 @@ export default function SchedulePage() {
                                   !isLecture &&
                                   (session.session_type === 'td' ||
                                     (session.group_name && session.group_name.toLowerCase().includes('td')));
+                                const isDraggingThis = draggedSession?.id === session.id;
 
                                 return (
-                                  <button
+                                  <div
                                     key={session.id}
-                                    type="button"
-                                    onClick={() => setActiveSession(session)}
-                                    className={`w-full text-right p-2 rounded-xl border text-xs transition-all shadow-sm block ${
-                                      isLecture
-                                        ? 'bg-blue-50/95 border-blue-300 hover:border-blue-400 text-blue-950 ring-1 ring-blue-300/50'
-                                        : isTD
-                                        ? 'bg-emerald-50/90 border-emerald-200 hover:border-emerald-300 text-emerald-950'
-                                        : 'bg-amber-50/90 border-amber-200 hover:border-amber-300 text-amber-950'
+                                    draggable={isDndEnabled}
+                                    onDragStart={(e) => isDndEnabled && handleDragStart(e, session)}
+                                    onDragEnd={handleDragEnd}
+                                    className={`w-full group relative transition-all rounded-xl select-none ${
+                                      isDraggingThis
+                                        ? 'opacity-30 scale-95 border-2 border-dashed border-blue-500 ring-2 ring-blue-400 shadow-none'
+                                        : isDndEnabled
+                                        ? 'cursor-grab active:cursor-grabbing hover:shadow-md hover:-translate-y-0.5'
+                                        : ''
                                     }`}
                                   >
-                                    <div className="flex items-center justify-between gap-1 mb-0.5">
-                                      <span className="font-bold truncate text-[11px]" title={session.course_name}>
-                                        {session.course_name || 'مقرر بدون اسم'}
-                                      </span>
-                                      <span
-                                        className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
-                                          isLecture
-                                            ? 'bg-blue-200 text-blue-900'
-                                            : isTD
-                                            ? 'bg-emerald-200 text-emerald-900'
-                                            : 'bg-amber-200 text-amber-900'
-                                        }`}
-                                      >
-                                        {isLecture ? 'محاضرة' : isTD ? 'TD' : 'TP'}
-                                      </span>
-                                    </div>
-                                    <div className="text-[11px] text-slate-700 truncate mt-0.5">
-                                      {session.professor_name || 'غير محدد'}
-                                    </div>
-                                    <div className="flex items-center justify-between text-[10px] text-slate-600 mt-1 pt-1 border-t border-slate-200/50">
-                                      <span className="font-semibold text-slate-800 truncate max-w-[90px]">
-                                        {session.group_name || 'الفوج'}
-                                      </span>
-                                      <span className="bg-white px-1.5 py-0.2 rounded font-mono font-bold text-slate-800 border border-slate-200">
-                                        {session.room_name || '—'}
-                                      </span>
-                                    </div>
-                                  </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => !draggedSession && setActiveSession(session)}
+                                      className={`w-full text-right p-2 rounded-xl border text-xs transition-all shadow-xs block ${
+                                        isLecture
+                                          ? 'bg-blue-50/95 border-blue-300 hover:border-blue-400 text-blue-950 ring-1 ring-blue-300/50'
+                                          : isTD
+                                          ? 'bg-emerald-50/90 border-emerald-200 hover:border-emerald-300 text-emerald-950'
+                                          : 'bg-amber-50/90 border-amber-200 hover:border-amber-300 text-amber-950'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                                        <div className="flex items-center gap-1 truncate max-w-[85%]">
+                                          {isDndEnabled && (
+                                            <GripVertical className="w-3 h-3 text-slate-400 shrink-0 opacity-60 group-hover:opacity-100 group-hover:text-blue-600 transition-opacity" />
+                                          )}
+                                          <span className="font-bold truncate text-[11px]" title={session.course_name}>
+                                            {session.course_name || 'مقرر بدون اسم'}
+                                          </span>
+                                        </div>
+                                        <span
+                                          className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
+                                            isLecture
+                                              ? 'bg-blue-200 text-blue-900'
+                                              : isTD
+                                              ? 'bg-emerald-200 text-emerald-900'
+                                              : 'bg-amber-200 text-amber-900'
+                                          }`}
+                                        >
+                                          {isLecture ? 'محاضرة' : isTD ? 'TD' : 'TP'}
+                                        </span>
+                                      </div>
+                                      <div className="text-[11px] text-slate-700 truncate mt-0.5">
+                                        {session.professor_name || 'غير محدد'}
+                                      </div>
+                                      <div className="flex items-center justify-between text-[10px] text-slate-600 mt-1 pt-1 border-t border-slate-200/50">
+                                        <span className="font-semibold text-slate-800 truncate max-w-[90px]">
+                                          {session.group_name || 'الفوج'}
+                                        </span>
+                                        <span className="bg-white px-1.5 py-0.2 rounded font-mono font-bold text-slate-800 border border-slate-200">
+                                          {session.room_name || '—'}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  </div>
                                 );
                               })}
                             </div>
@@ -1246,6 +1685,75 @@ export default function SchedulePage() {
           </div>
         </div>
       </Dialog>
+
+      {/* 6. Active Dragging Floating Status Bar */}
+      {isDndEnabled && draggedSession && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-2xl w-full mx-4 no-print">
+          <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl shrink-0">
+            <GripVertical className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="text-xs truncate flex-1">
+            <span className="font-bold text-white block truncate">
+              جاري سحب: {draggedSession.course_name} ({draggedSession.session_type === 'cours' ? 'محاضرة' : 'TD'})
+            </span>
+            <span className="text-slate-300 text-[11px] truncate block">
+              {draggedSession.professor_name || 'أستاذ غير محدد'} | {draggedSession.group_name || 'فوج غير محدد'} | القاعة: {draggedSession.room_name || '—'}
+            </span>
+          </div>
+          {activeConflict ? (
+            <div className="px-3 py-1.5 bg-rose-500/20 border border-rose-500/40 text-rose-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 max-w-xs truncate">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span className="truncate">{activeConflict}</span>
+            </div>
+          ) : dragOverCell ? (
+            <div className="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 shrink-0">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>خانة متاحة (أفلت الحصة للنقل)</span>
+            </div>
+          ) : (
+            <span className="text-slate-400 text-xs shrink-0">اسحب إلى أي خانة زمنية فارغة</span>
+          )}
+          <button
+            type="button"
+            onClick={handleDragEnd}
+            className="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors border border-slate-700 shrink-0"
+          >
+            إلغاء
+          </button>
+        </div>
+      )}
+
+      {/* 7. Conflict Alert Dialog */}
+      <Dialog open={!!conflictAlert} onClose={() => setConflictAlert(null)} size="sm">
+        {conflictAlert && (
+          <div className="p-6 bg-white rounded-2xl max-w-sm w-full space-y-4 text-right">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6 text-rose-600" />
+            </div>
+            <DialogTitle className="text-center text-base font-bold text-slate-900">
+              تعارض في برمجة الحصة
+            </DialogTitle>
+            <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
+              {conflictAlert.reason}
+            </DialogDescription>
+            <div className="pt-2 flex justify-center">
+              <Button variant="primary" size="sm" onClick={() => setConflictAlert(null)}>
+                حسناً، فهمت
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      {/* 8. Undo Toast Notification */}
+      <UndoToast
+        show={undoToast.show}
+        message={undoToast.message}
+        changeLogId={undoToast.changeLogId}
+        onUndo={handleUndo}
+        onClose={() => setUndoToast((prev) => ({ ...prev, show: false }))}
+        isLoading={isUndoing}
+      />
     </div>
   );
 }
