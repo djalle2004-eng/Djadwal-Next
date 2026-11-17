@@ -25,6 +25,7 @@ import {
   Move,
   CheckCircle2,
   AlertTriangle,
+  FlaskConical,
 } from 'lucide-react';
 import {
   Button,
@@ -41,6 +42,7 @@ import {
 import { api } from '@/lib/api';
 import UndoToast from '@/components/UndoToast';
 import { TIME_SLOTS, DAYS, normalizeDay, matchesSlot } from '@/constants/timeSlots';
+import { useSandbox } from '@/context/SandboxContext';
 
 interface Assignment {
   id: number;
@@ -113,6 +115,20 @@ export default function SchedulePage() {
     conflictingSession?: Assignment;
   } | null>(null);
 
+  // Sandbox / Simulation Context
+  const {
+    isSandboxMode,
+    stagedAssignments,
+    enterSandboxMode,
+    exitSandboxMode,
+    applySimulatedMove,
+    syncLiveAssignments,
+    changeCount,
+  } = useSandbox();
+
+  // Effective assignments: in simulation mode, display and check against staged assignments
+  const effectiveAssignments = isSandboxMode ? stagedAssignments : assignments;
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -129,6 +145,7 @@ export default function SchedulePage() {
 
       if (assignRes.status === 'fulfilled' && Array.isArray(assignRes.value)) {
         setAssignments(assignRes.value);
+        syncLiveAssignments(assignRes.value);
       }
       if (groupsRes.status === 'fulfilled' && Array.isArray(groupsRes.value)) {
         setGroups(groupsRes.value);
@@ -306,9 +323,9 @@ export default function SchedulePage() {
     return false;
   };
 
-  // Filtered assignments based on current selection
+  // Filtered assignments based on current selection (using effectiveAssignments for simulation support)
   const filteredAssignments = useMemo(() => {
-    return assignments.filter((a) => {
+    return effectiveAssignments.filter((a) => {
       // Day filter
       if (selectedDayId !== 'all') {
         const dayNum = normalizeDay(a.day_of_week);
@@ -387,7 +404,7 @@ export default function SchedulePage() {
 
       return true;
     });
-  }, [assignments, filterType, selectedEntityId, selectedDayId, selectedSpecialization, selectedYearLevel, sessionTypeFilter, groups]);
+  }, [effectiveAssignments, filterType, selectedEntityId, selectedDayId, selectedSpecialization, selectedYearLevel, sessionTypeFilter, groups]);
 
   // Find assignments for a specific day and time slot
   const getCellAssignments = (dayId: number, slot: typeof TIME_SLOTS[0]) => {
@@ -488,8 +505,8 @@ export default function SchedulePage() {
       return { hasConflict: false };
     }
 
-    // Find all assignments in target day and slot (excluding the dragged session itself)
-    const slotAssignments = assignments.filter((a) => {
+    // Find all assignments in target day and slot (evaluating against effectiveAssignments for simulation support)
+    const slotAssignments = effectiveAssignments.filter((a) => {
       if (a.id === session.id) return false;
       const aDay = normalizeDay(a.day_of_week);
       if (aDay !== targetDayId) return false;
@@ -700,9 +717,30 @@ export default function SchedulePage() {
       return;
     }
 
+    const targetRoomObj = targetRoomId ? rooms.find((r) => r.id === targetRoomId) : null;
+    const targetDayName = DAYS.find((d) => d.id === targetDayId)?.name || 'اليوم المحدد';
+
+    // 2. Simulation Mode (Pure local in-memory update with zero DB writes)
+    if (isSandboxMode) {
+      applySimulatedMove({
+        assignmentId: sessionToMove.id,
+        toDayId: targetDayId,
+        toStartTime: targetSlot.start,
+        toEndTime: targetSlot.end,
+        toRoomId: targetRoomId,
+        toRoomName: targetRoomObj ? targetRoomObj.name : sessionToMove.room_name,
+      });
+
+      setUndoToast({
+        show: true,
+        message: `⚡ [وضع التجربة] تم نقل حصة (${sessionToMove.course_name || 'المقرر'}) افتراضياً إلى يوم ${targetDayName} (${targetSlot.label})`,
+        changeLogId: null,
+      });
+      return;
+    }
+
     // 2. Optimistic Update (Instantaneous UI response)
     const previousAssignments = [...assignments];
-    const targetRoomObj = targetRoomId ? rooms.find((r) => r.id === targetRoomId) : null;
     const updatedAssignment: Assignment = {
       ...sessionToMove,
       day_of_week: targetDayId,
@@ -717,7 +755,6 @@ export default function SchedulePage() {
       prev.map((a) => (a.id === sessionToMove.id ? updatedAssignment : a))
     );
 
-    const targetDayName = DAYS.find((d) => d.id === targetDayId)?.name || 'اليوم المحدد';
     const successMsg = `تم نقل حصة (${sessionToMove.course_name || 'المقرر'}) بنجاح إلى يوم ${targetDayName} (${targetSlot.label})`;
 
     // 3. Safe Backend Persistence with OCC (Unit of Work)
@@ -820,6 +857,40 @@ export default function SchedulePage() {
             <Sparkles className="w-4 h-4" />
             <span>الواجهة المعتمدة (Legacy)</span>
           </a>
+
+          {/* Simulation / Sandbox Mode Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              if (isSandboxMode) {
+                if (changeCount > 0) {
+                  if (
+                    !window.confirm(
+                      `لديك ${changeCount} تعديل معلق في وضع التجربة. هل تريد الخروج وإلغاء التعديلات؟`
+                    )
+                  ) {
+                    return;
+                  }
+                }
+                exitSandboxMode();
+              } else {
+                enterSandboxMode(assignments);
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-xs ${
+              isSandboxMode
+                ? 'bg-amber-500 text-amber-950 border-amber-600 ring-2 ring-amber-400/50 hover:bg-amber-400'
+                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300'
+            }`}
+            title={
+              isSandboxMode
+                ? 'وضع التجربة نشط — انقر للخروج'
+                : 'تفعيل وضع التجربة (محاكاة التعديلات محلياً دون مساس بقاعدة البيانات)'
+            }
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            <span>{isSandboxMode ? `وضع التجربة: نشط (${changeCount})` : 'وضع التجربة'}</span>
+          </button>
 
           {/* DnD Toggle Button */}
           <button
@@ -1217,7 +1288,24 @@ export default function SchedulePage() {
           <p className="text-sm text-slate-500 font-medium">جاري إعداد جدول التوقيت وجلب الحصص...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
+        <div
+          className={`bg-white rounded-2xl shadow-sm overflow-x-auto transition-all ${
+            isSandboxMode
+              ? 'border-2 border-amber-400/90 shadow-md shadow-amber-500/10'
+              : 'border border-slate-200'
+          }`}
+        >
+          {isSandboxMode && (
+            <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-950 font-bold">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="w-4 h-4 text-amber-600" />
+                <span>جدول المحاكاة الافتراضي (Sandbox Timetable) — السحب والإفلات يغير الحصص محلياً فقط دون المساس بالبيانات الحية</span>
+              </div>
+              <span className="text-[11px] bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md">
+                {changeCount} تعديل معلق
+              </span>
+            </div>
+          )}
           <table className="w-full border-collapse min-w-[900px] text-right">
             <thead>
               <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-700 text-xs">
@@ -1689,11 +1777,12 @@ export default function SchedulePage() {
       {/* 6. Active Dragging Floating Status Bar */}
       {isDndEnabled && draggedSession && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-2xl w-full mx-4 no-print">
-          <div className="p-2 bg-blue-500/20 text-blue-400 rounded-xl shrink-0">
+          <div className={`p-2 rounded-xl shrink-0 ${isSandboxMode ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}`}>
             <GripVertical className="w-5 h-5 animate-pulse" />
           </div>
           <div className="text-xs truncate flex-1">
             <span className="font-bold text-white block truncate">
+              {isSandboxMode && <span className="text-amber-400 me-1.5 font-extrabold">[وضع التجربة]</span>}
               جاري سحب: {draggedSession.course_name} ({draggedSession.session_type === 'cours' ? 'محاضرة' : 'TD'})
             </span>
             <span className="text-slate-300 text-[11px] truncate block">

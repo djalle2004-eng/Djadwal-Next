@@ -174,6 +174,29 @@ async function createSnapshot(req, res) {
   }
 }
 
+async function getSnapshot(req, res) {
+  try {
+    const { id } = req.params;
+    const [row] = await executeQuery('SELECT id, name, data, created_at FROM sandbox_snapshots WHERE id = $1', [id]);
+    if (!row) {
+      return res.status(404).json({ error: 'المسودة غير موجودة' });
+    }
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function deleteSnapshot(req, res) {
+  try {
+    const { id } = req.params;
+    await executeQuery('DELETE FROM sandbox_snapshots WHERE id = $1', [id]);
+    res.json({ success: true, message: 'تم حذف المسودة بنجاح' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   getAppConfig,
   updateAppConfig,
@@ -182,6 +205,8 @@ module.exports = {
   getEmailSettings,
   listSnapshots,
   createSnapshot,
+  getSnapshot,
+  deleteSnapshot,
   exportData,
   DEFAULT_PRINT_SETTINGS
 };

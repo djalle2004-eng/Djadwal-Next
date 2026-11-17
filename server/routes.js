@@ -224,6 +224,8 @@ router.put('/print-settings', authorize('print_settings', 'update'), settingsMod
 
 router.post('/sandbox/save', authorize('sandbox_snapshots', 'create'), settingsModule.createSnapshot);
 router.get('/sandbox/list', authorize('sandbox_snapshots', 'view'), settingsModule.listSnapshots);
+router.get('/sandbox/:id', authorize('sandbox_snapshots', 'view'), settingsModule.getSnapshot);
+router.delete('/sandbox/:id', authorize('sandbox_snapshots', 'delete'), settingsModule.deleteSnapshot);
 
 router.get('/export/data', authorize('backup', 'export'), settingsModule.exportData);
 router.get('/export/database', authorize('backup', 'export'), settingsModule.exportData);

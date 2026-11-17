@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Navigation from '@/components/Navigation';
+import Providers from '@/components/Providers';
 
 export const metadata: Metadata = {
   title: 'نظام Djadwal — إدارة الجداول الأكاديمية',
@@ -23,10 +24,12 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-slate-50 text-slate-900 antialiased font-cairo">
-        <Navigation />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {children}
-        </main>
+        <Providers>
+          <Navigation />
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

@@ -415,6 +415,19 @@ export const api = {
   getBackupSnapshot: () =>
     apiFetch<any>('/system/backup/snapshot'),
 
+  // Sandbox Snapshots (Simulation Mode Drafts)
+  listSandboxSnapshots: () =>
+    apiFetch<any[]>('/api/sandbox/list'),
+
+  saveSandboxSnapshot: (data: { name: string; data: any }) =>
+    apiFetch<any>('/api/sandbox/save', { method: 'POST', body: JSON.stringify(data) }),
+
+  getSandboxSnapshot: (id: number | string) =>
+    apiFetch<any>(`/api/sandbox/${id}`),
+
+  deleteSandboxSnapshot: (id: number | string) =>
+    apiFetch<any>(`/api/sandbox/${id}`, { method: 'DELETE' }),
+
   // Get active database status (P6 Neon / Turso indicator)
   getDatabaseStatus: () =>
     apiFetch<any>('/api/status', { method: 'GET' }).catch(() => ({

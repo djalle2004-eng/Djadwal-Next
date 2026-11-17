@@ -90,7 +90,7 @@ const ROLE_PERMISSIONS_MATRIX = {
         app_config: VIEW_ONLY,
         print_settings: VIEW_ONLY,
         backup: NO_PERMISSIONS,
-        sandbox_snapshots: { view: true, create: true, update: true, delete: false, export: false, activate: false, admin: false },
+        sandbox_snapshots: { view: true, create: true, update: true, delete: true, export: false, activate: false, admin: false },
         audit_logs: NO_PERMISSIONS,
         email: { view: true, create: false, update: false, delete: false, export: false, activate: false, admin: false },
         ai: { view: true, create: true, update: false, delete: false, export: false, activate: false, admin: false }

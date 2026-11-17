@@ -30,10 +30,12 @@ import {
   Settings,
   History,
   Shield,
-  Building2
+  Building2,
+  FlaskConical
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Drawer } from '@djadwal/ui';
+import { useSandbox } from '@/context/SandboxContext';
 
 // Navigation Groups Definition
 interface NavItem {
@@ -218,6 +220,9 @@ export default function Navigation() {
   const [, setAcademicYears] = useState<any[]>([]);
   const [currentYear, setCurrentYear] = useState<string>('2026-2027');
   const [currentSemester, setCurrentSemester] = useState<string>('السداسي الأول');
+
+  // Sandbox / Simulation Context
+  const { isSandboxMode, enterSandboxMode, exitSandboxMode, changeCount } = useSandbox();
 
   // Active dropdown menu ID for desktop
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -478,6 +483,36 @@ export default function Navigation() {
 
           {/* Right Side: Quick Action & Mobile Menu Toggle */}
           <div className="flex items-center gap-2">
+            {/* Simulation Mode Toggle on Desktop */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isSandboxMode) {
+                  if (changeCount > 0) {
+                    if (
+                      !window.confirm(
+                        `لديك ${changeCount} تعديل معلق في وضع التجربة. هل تريد الخروج وإلغاء التعديلات؟`
+                      )
+                    ) {
+                      return;
+                    }
+                  }
+                  exitSandboxMode();
+                } else {
+                  enterSandboxMode();
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 ${
+                isSandboxMode
+                  ? 'bg-amber-500 text-amber-950 shadow-xs ring-2 ring-amber-400/50'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200/60'
+              }`}
+              title={isSandboxMode ? 'وضع التجربة نشط — انقر للخروج' : 'تفعيل وضع التجربة والمحاكاة'}
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              <span>{isSandboxMode ? `وضع التجربة (${changeCount})` : 'وضع التجربة'}</span>
+            </button>
+
             {/* Quick Print Shortcut on Desktop */}
             <Link
               href="/print"
@@ -513,6 +548,37 @@ export default function Navigation() {
         className="w-full max-w-sm"
       >
         <div className="space-y-6 text-start">
+          {/* Direct Simulation Mode Toggle in Mobile Drawer */}
+          <div className="p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/60">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                <FlaskConical className="w-4 h-4 text-amber-600" />
+                وضع التجربة (Sandbox)
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSandboxMode) {
+                    exitSandboxMode();
+                  } else {
+                    enterSandboxMode();
+                  }
+                  setMobileDrawerOpen(false);
+                }}
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-colors ${
+                  isSandboxMode
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white dark:bg-zinc-800 text-amber-900 dark:text-amber-200 border border-amber-300'
+                }`}
+              >
+                {isSandboxMode ? 'إيقاف التجربة' : 'تفعيل التجربة'}
+              </button>
+            </div>
+            <p className="text-[10px] text-amber-800/70 dark:text-amber-300/70 leading-relaxed">
+              تجربة تعديل ونقل الحصص محلياً دون التأثير على قاعدة بيانات الإنتاج.
+            </p>
+          </div>
+
           {/* Direct Dashboard Link */}
           <div>
             <Link
