@@ -188,6 +188,46 @@ const updateExtraSessionSchema = z.object({
   ignore_conflicts: z.boolean().optional()
 });
 
+// P13 Scheduling Schemas
+const generateScheduleSchema = z.object({
+  semester_id: z.coerce.number().int().optional(),
+  academic_year: z.string().optional(),
+  mode: z.enum(['fast', 'optimize']).optional().default('fast'),
+  timeout_ms: z.coerce.number().int().min(1000).max(180000).optional().default(30000),
+  save_as_draft: z.boolean().optional().default(false),
+  draft_title: z.string().optional().default('مسودة مقترحة آلياً'),
+  seed: z.coerce.number().int().optional()
+});
+
+const explainConflictsSchema = z.object({
+  sessions: z.array(z.any()).optional(),
+  semester_id: z.coerce.number().int().optional(),
+  academic_year: z.string().optional()
+});
+
+const createScheduleVersionSchema = z.object({
+  semester_id: z.coerce.number().int({ message: 'معرف السداسي مطلوب' }),
+  title: z.string().trim().min(1, 'عنوان الإصدار مطلوب'),
+  note: z.string().optional().default(''),
+  items: z.array(z.any()).optional().default([])
+});
+
+const transitionVersionSchema = z.object({
+  new_status: z.enum(['draft', 'review', 'approved', 'published', 'archived']),
+  note: z.string().optional()
+});
+
+const updateVersionItemDecisionSchema = z.object({
+  decision: z.enum(['accepted', 'rejected', 'modified', 'proposed']),
+  note: z.string().optional(),
+  updated_data: z.record(z.any()).optional()
+});
+
+const simulateImpactSchema = z.object({
+  semester_id: z.coerce.number().int().optional(),
+  proposed_items: z.array(z.any()).min(1, 'قائمة الحصص المقترحة مطلوبة للتحليل')
+});
+
 module.exports = {
   formatV1Error,
   createDepartmentSchema,
@@ -208,6 +248,13 @@ module.exports = {
   checkAssignmentConflictsSchema,
   bulkImportAssignmentsSchema,
   createExtraSessionSchema,
-  updateExtraSessionSchema
+  updateExtraSessionSchema,
+  generateScheduleSchema,
+  explainConflictsSchema,
+  createScheduleVersionSchema,
+  transitionVersionSchema,
+  updateVersionItemDecisionSchema,
+  simulateImpactSchema
 };
+
 

@@ -21,6 +21,7 @@ const compatModule = require('./modules/compat/index.js');
 const authModule = require('./modules/auth/index.js');
 const backupModule = require('./modules/backup/index.js');
 const settingsModule = require('./modules/settings/index.js');
+const schedulingModule = require('./modules/scheduling/index.js');
 
 // 1. Core V1 Middlewares
 router.use(traceMiddleware);
@@ -141,6 +142,19 @@ router.post('/settings/print', settingsModule.updatePrintSettings);
 
 // 10.7 System Backup & Full Snapshot
 router.get(['/system/backup/snapshot', '/backup/snapshot'], backupModule.exportBackupSnapshot);
+
+// 10.8 P13: Auto-Scheduler & Schedule Versioning & Approval Workflow
+router.post('/scheduling/generate', validateBody(schemas.generateScheduleSchema), schedulingModule.generateScheduleEndpoint);
+router.post('/scheduling/conflicts/explain', validateBody(schemas.explainConflictsSchema), schedulingModule.explainConflictsEndpoint);
+router.post('/scheduling/impact-simulate', validateBody(schemas.simulateImpactSchema), schedulingModule.simulateImpactEndpoint);
+router.get('/scheduling/versions', schedulingModule.listVersionsEndpoint);
+router.post('/scheduling/versions', validateBody(schemas.createScheduleVersionSchema), schedulingModule.createVersionEndpoint);
+router.get('/scheduling/versions/diff', schedulingModule.getVisualDiffEndpoint);
+router.get('/scheduling/versions/:id', schedulingModule.getVersionDetailsEndpoint);
+router.post('/scheduling/versions/:id/transition', validateBody(schemas.transitionVersionSchema), schedulingModule.transitionVersionEndpoint);
+router.post('/scheduling/versions/:id/rollback', schedulingModule.rollbackVersionEndpoint);
+router.patch('/scheduling/versions/:id/items/:itemId', validateBody(schemas.updateVersionItemDecisionSchema), schedulingModule.updateItemDecisionEndpoint);
+
 
 // 11. Central V1 Error Handler
 router.use((err, req, res, next) => {

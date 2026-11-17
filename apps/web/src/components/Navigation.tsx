@@ -107,6 +107,12 @@ const navGroups: NavGroup[] = [
         icon: CalendarClock,
         description: 'إدارة وتوزيع الحصص والتكليفات البيداغوجية والاستيراد الذري',
       },
+      {
+        name: 'إصدارات الجدول والمولّد الآلي',
+        href: '/schedule/versions',
+        icon: History,
+        description: 'المولّد الآلي، سير الموافقات المزدوجة، كشف التعارضات التفسيري والاسترجاع السريع',
+      },
     ],
   },
   {
@@ -349,8 +355,12 @@ export default function Navigation() {
           {/* Logo & Brand */}
           <div className="flex items-center gap-6">
             <Link href="/dashboard" className="flex items-center gap-2.5 group">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white font-black text-lg shadow-sm shadow-emerald-600/20 group-hover:scale-105 transition-transform duration-200">
-                جد
+              <div className="h-9 w-9 rounded-xl bg-white dark:bg-zinc-800 p-0.5 border border-slate-200/80 dark:border-zinc-700 shadow-sm shadow-emerald-600/10 group-hover:scale-105 transition-transform duration-200 overflow-hidden shrink-0 flex items-center justify-center">
+                <img
+                  src="/logo-circle.png"
+                  alt="شعار جدول"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
@@ -548,6 +558,19 @@ export default function Navigation() {
         className="w-full max-w-sm"
       >
         <div className="space-y-6 text-start">
+          {/* Branded Header */}
+          <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200/60 dark:border-zinc-700/60">
+            <img
+              src="/logo-circle.png"
+              alt="شعار جدول"
+              className="w-11 h-11 object-contain rounded-xl shadow-xs"
+            />
+            <div>
+              <span className="font-extrabold text-slate-900 dark:text-white text-base block">نظام Djadwal</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">جامعة الشهيد حمه لخضر بالوادي</span>
+            </div>
+          </div>
+
           {/* Direct Simulation Mode Toggle in Mobile Drawer */}
           <div className="p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/60">
             <div className="flex items-center justify-between mb-1.5">

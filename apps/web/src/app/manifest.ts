@@ -16,6 +16,12 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ['education', 'productivity'],
     icons: [
       {
+        src: '/logo-circle.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
         src: '/icons/icon.svg',
         sizes: 'any',
         type: 'image/svg+xml',

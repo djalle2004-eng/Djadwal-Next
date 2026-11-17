@@ -90,7 +90,13 @@ export const envSchema = z.object({
     .default(true),
 
   // P8: Modernized API v1 & Strangler Proxy Flags
-  API_ROUTING_DEFAULT: z.enum(['legacy', 'v1', 'shadow']).default('legacy')
+  API_ROUTING_DEFAULT: z.enum(['legacy', 'v1', 'shadow']).default('legacy'),
+
+  // P13: Auto-Scheduler Engine & Explainable Conflict Detection Flags
+  FEATURE_AUTO_SCHEDULER: z
+    .preprocess(val => val === 'true' || val === true || val === '1' || val === undefined, z.boolean())
+    .default(true),
+  AUTO_SCHEDULER_TIMEOUT_MS: z.coerce.number().min(1000).max(300000).default(30000)
 });
 
 export type ValidatedEnv = z.infer<typeof envSchema>;
