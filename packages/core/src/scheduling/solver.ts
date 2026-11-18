@@ -247,7 +247,10 @@ function runConstraintOptimization(
   let currentConflicts = detectExplainableConflicts(currentTasks, constraints);
   let currentPenalty = evaluatePenalty(currentConflicts, currentTasks);
 
-  let bestTasks = currentTasks.map(t => ({ ...t, assignedSlot: { ...t.assignedSlot! } }));
+  let bestTasks: SchedulingTask[] = currentTasks.map(t => ({
+    ...t,
+    assignedSlot: t.assignedSlot ? { ...t.assignedSlot } : undefined
+  }));
   let bestPenalty = currentPenalty;
 
   let temperature = 100.0;

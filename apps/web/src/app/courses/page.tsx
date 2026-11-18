@@ -38,6 +38,7 @@ import { api, ApiError } from '@/lib/api';
 import DeleteImpactModal from '@/components/DeleteImpactModal';
 import UndoToast from '@/components/UndoToast';
 import ImportCoursesModal from '@/components/ImportCoursesModal';
+import MultiSelectSpecialties from '@/components/MultiSelectSpecialties';
 
 export interface Course {
   id: number;
@@ -50,6 +51,8 @@ export interface Course {
   study_level?: string;
   specialization_id?: number;
   specialization_name?: string;
+  specialization?: string;
+  specialties?: string[];
   department_id?: number;
   department_name?: string;
   has_lecture?: boolean;
@@ -68,6 +71,7 @@ interface ParsedCourseMetadata {
   semester: string;
   study_level: string;
   specialization: string;
+  specialties: string[];
   weekly_hours: number;
   session_types: string[];
 }
@@ -117,6 +121,7 @@ export default function CoursesPage() {
     semester: 'S1',
     studyLevel: 'L1',
     specialization: '',
+    specialties: [] as string[],
     departmentId: '',
     weeklyHours: 3.0,
     hasLecture: true,
@@ -147,12 +152,30 @@ export default function CoursesPage() {
           course.has_tp ? 'tp' : null,
         ].filter(Boolean);
 
+    let specialties: string[] = [];
+    if (Array.isArray(course.specialties) && course.specialties.length > 0) {
+      specialties = course.specialties.map(String).filter(Boolean);
+    } else if (Array.isArray(meta.specialties) && meta.specialties.length > 0) {
+      specialties = meta.specialties.map(String).filter(Boolean);
+    } else if (typeof course.specialization === 'string' && course.specialization.trim()) {
+      specialties = course.specialization.split(/[،,]/).map((s: string) => s.trim()).filter(Boolean);
+    } else if (typeof meta.specialization === 'string' && meta.specialization.trim()) {
+      specialties = meta.specialization.split(/[،,]/).map((s: string) => s.trim()).filter(Boolean);
+    } else if (course.specialization_name) {
+      specialties = [course.specialization_name];
+    }
+
+    const specializationStr = specialties.length > 0
+      ? specialties.join('، ')
+      : (course.specialization || course.specialization_name || meta.specialization || '');
+
     return {
       credits: Number(course.credits ?? meta.credits ?? 3),
       coefficient: Number(course.coefficient ?? meta.coefficient ?? 2),
       semester: course.semester || meta.semester || 'S1',
       study_level: course.study_level || meta.study_level || 'L1',
-      specialization: course.specialization_name || meta.specialization || '',
+      specialization: specializationStr,
+      specialties,
       weekly_hours: Number(course.weekly_hours ?? meta.weekly_hours ?? 3.0),
       session_types: sessionTypes.length > 0 ? sessionTypes : ['lecture', 'td'],
     };
@@ -189,6 +212,11 @@ export default function CoursesPage() {
       if (Array.isArray(activeData)) {
         activeData.forEach((c: Course) => {
           const meta = parseCourseMeta(c);
+          if (Array.isArray(meta.specialties)) {
+            meta.specialties.forEach((s) => {
+              if (s && s.trim()) specSet.add(s.trim());
+            });
+          }
           if (meta.specialization && meta.specialization.trim()) specSet.add(meta.specialization.trim());
         });
       }
@@ -277,6 +305,7 @@ export default function CoursesPage() {
       semester: 'S1',
       studyLevel: 'L1',
       specialization: '',
+      specialties: [],
       departmentId: '',
       weeklyHours: 3.0,
       hasLecture: true,
@@ -299,6 +328,7 @@ export default function CoursesPage() {
       semester: meta.semester,
       studyLevel: meta.study_level,
       specialization: meta.specialization,
+      specialties: meta.specialties || [],
       departmentId: course.department_id ? String(course.department_id) : '',
       weeklyHours: meta.weekly_hours,
       hasLecture: meta.session_types.includes('lecture'),
@@ -324,12 +354,20 @@ export default function CoursesPage() {
     if (formData.hasTD) session_types.push('td');
     if (formData.hasTP) session_types.push('tp');
 
+    const payloadSpecialties = formData.specialties.length > 0
+      ? formData.specialties
+      : (formData.specialization ? formData.specialization.split(/[،,]/).map((s: string) => s.trim()).filter(Boolean) : []);
+    const payloadSpecializationStr = payloadSpecialties.length > 0
+      ? payloadSpecialties.join('، ')
+      : formData.specialization.trim();
+
     const metadataPayload = {
       credits: Number(formData.credits) || 3,
       coefficient: Number(formData.coefficient) || 2,
       semester: formData.semester,
       study_level: formData.studyLevel,
-      specialization: formData.specialization.trim(),
+      specialization: payloadSpecializationStr,
+      specialties: payloadSpecialties,
       weekly_hours: Number(formData.weeklyHours) || 3.0,
       session_types,
     };
@@ -342,6 +380,8 @@ export default function CoursesPage() {
       credits: Number(formData.credits) || 3,
       coefficient: Number(formData.coefficient) || 2,
       study_level: formData.studyLevel,
+      specialization: payloadSpecializationStr,
+      specialties: payloadSpecialties,
       has_lecture: formData.hasLecture,
       has_td: formData.hasTD,
       has_tp: formData.hasTP,
@@ -769,9 +809,47 @@ export default function CoursesPage() {
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="font-medium text-foreground text-xs">
-                            {meta.study_level ? <span className="bg-muted px-1.5 py-0.5 rounded ml-1 font-semibold">{meta.study_level}</span> : null}
-                            {meta.specialization || course.department_name || 'جذع مشترك'}
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {meta.study_level ? (
+                                <span className="bg-slate-800 text-slate-200 border border-slate-700 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                                  {meta.study_level}
+                                </span>
+                              ) : null}
+                              {meta.specialties && meta.specialties.length > 0 ? (
+                                meta.specialties.length <= 2 ? (
+                                  meta.specialties.map((s, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px] px-2 py-0.5 rounded-md font-medium"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <>
+                                    <span className="bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px] px-2 py-0.5 rounded-md font-medium">
+                                      {meta.specialties[0]}
+                                    </span>
+                                    <span
+                                      className="bg-slate-100 dark:bg-slate-850 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-[10px] px-1.5 py-0.5 rounded-md cursor-help"
+                                      title={meta.specialties.join('\n')}
+                                    >
+                                      +{meta.specialties.length - 1} تخصصات أخرى
+                                    </span>
+                                  </>
+                                )
+                              ) : (
+                                <span className="text-xs text-muted-foreground font-medium">
+                                  {meta.specialization || course.department_name || 'جذع مشترك'}
+                                </span>
+                              )}
+                            </div>
+                            {course.department_name && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {course.department_name}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
@@ -918,269 +996,269 @@ export default function CoursesPage() {
       />
 
       {/* Add / Edit Course Modal */}
-      <Dialog open={showFormModal} onClose={() => setShowFormModal(false)} size="md">
-        {showFormModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 text-right space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-3">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                  <BookOpen className="h-5 w-5" />
-                  <DialogTitle className="text-lg font-bold text-foreground">
-                    {editingCourse ? 'تعديل بيانات المقياس التدريسي' : 'إضافة مقياس بيداغوجي جديد'}
-                  </DialogTitle>
-                </div>
-                {editingCourse && (
-                  <Badge variant="outline" className="text-xs font-mono">
-                    v{editingCourse.version || 1}
-                  </Badge>
-                )}
-              </div>
+      <Dialog
+        open={showFormModal}
+        onClose={() => setShowFormModal(false)}
+        size="lg"
+        className="bg-slate-900 border-slate-700 text-slate-100 max-h-[92vh] overflow-y-auto max-w-2xl text-right p-6 rounded-2xl space-y-4 shadow-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2 text-indigo-400">
+            <BookOpen className="h-5 w-5" />
+            <DialogTitle className="text-lg font-bold text-slate-100">
+              {editingCourse ? 'تعديل بيانات المقياس التدريسي' : 'إضافة مقياس بيداغوجي جديد'}
+            </DialogTitle>
+          </div>
+          {editingCourse && (
+            <Badge variant="outline" className="text-xs font-mono text-slate-300 border-slate-700 bg-slate-800">
+              v{editingCourse.version || 1}
+            </Badge>
+          )}
+        </div>
 
-              <DialogDescription className="text-xs text-muted-foreground">
-                اربط المقياس بالسداسي المناسب، وحدد المستوى والتخصص، المعامل والرصيد وفق دفتر الشروط البيداغوجي.
-              </DialogDescription>
+        <DialogDescription className="text-xs text-slate-400">
+          اربط المقياس بالسداسي المناسب، وحدد المستوى والتخصصات المعنية، المعامل والرصيد وفق دفتر الشروط البيداغوجي.
+        </DialogDescription>
 
-              {conflictError && (
-                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <p>{conflictError}</p>
-                </div>
-              )}
-
-              <form onSubmit={handleSaveCourse} className="space-y-4">
-                {/* Course Name & Code */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      اسم المقياس <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="مثال: الخوارزميات وهياكل البيانات 1..."
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      رمز المقياس (Code)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.code}
-                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                      placeholder="مثال: INF101"
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
-                    />
-                  </div>
-                </div>
-
-                {/* Semester & Study Level */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      السداسي البيداغوجي <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, semester: 'S1' })}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
-                          formData.semester === 'S1'
-                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 ring-2 ring-blue-500/20'
-                            : 'border-input hover:bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        السداسي الأول (S1)
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setFormData({ ...formData, semester: 'S2' })}
-                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
-                          formData.semester === 'S2'
-                            ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 ring-2 ring-purple-500/20'
-                            : 'border-input hover:bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        السداسي الثاني (S2)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      الطور والمستوى الدراسي
-                    </label>
-                    <select
-                      value={formData.studyLevel}
-                      onChange={(e) => setFormData({ ...formData, studyLevel: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="L1">سنة أولى ليسانس (L1)</option>
-                      <option value="L2">سنة ثانية ليسانس (L2)</option>
-                      <option value="L3">سنة ثالثة ليسانس (L3)</option>
-                      <option value="M1">سنة أولى ماستر (M1)</option>
-                      <option value="M2">سنة ثانية ماستر (M2)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Specialization & Department */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      التخصص / الشعبة
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.specialization}
-                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
-                      placeholder="مثال: إعلام آلي، هندسة برمجيات..."
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      القسم الأكاديمي
-                    </label>
-                    <select
-                      value={formData.departmentId}
-                      onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="">بدون قسم / قسم عام</option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Credits, Coefficient, Weekly Hours */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      المعامل (Coefficient)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      required
-                      value={formData.coefficient}
-                      onChange={(e) => setFormData({ ...formData, coefficient: Number(e.target.value) || 1 })}
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      الرصيد (ECTS Credits)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      required
-                      value={formData.credits}
-                      onChange={(e) => setFormData({ ...formData, credits: Number(e.target.value) || 1 })}
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-foreground mb-1">
-                      الحجم الساعي الأسبوعي
-                    </label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="1"
-                      max="20"
-                      required
-                      value={formData.weeklyHours}
-                      onChange={(e) => setFormData({ ...formData, weeklyHours: Number(e.target.value) || 3 })}
-                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* Session Types Selection */}
-                <div className="border border-border rounded-xl p-3.5 bg-muted/20">
-                  <label className="block text-xs font-semibold text-foreground mb-2">
-                    أنواع الحصص المقررة في المقياس:
-                  </label>
-                  <div className="flex items-center gap-5 text-xs">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.hasLecture}
-                        onChange={(e) => setFormData({ ...formData, hasLecture: e.target.checked })}
-                        className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                      />
-                      <span className="font-medium">محاضرة (Cours)</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.hasTD}
-                        onChange={(e) => setFormData({ ...formData, hasTD: e.target.checked })}
-                        className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                      />
-                      <span className="font-medium">أعمال موجهة (TD)</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.hasTP}
-                        onChange={(e) => setFormData({ ...formData, hasTP: e.target.checked })}
-                        className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                      />
-                      <span className="font-medium">أعمال تطبيقية (TP مخبر)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowFormModal(false)}
-                    className="rounded-xl"
-                  >
-                    إلغاء
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-semibold"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        <span>جارٍ الحفظ...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        <span>{editingCourse ? 'تحديث بيانات المقياس' : 'حفظ المقياس في الدليل'}</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </div>
+        {conflictError && (
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <p>{conflictError}</p>
           </div>
         )}
+
+        <form onSubmit={handleSaveCourse} className="space-y-4">
+          {/* Course Name & Code */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                اسم المقياس <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="مثال: الخوارزميات وهياكل البيانات 1..."
+                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                رمز المقياس (Code)
+              </label>
+              <input
+                type="text"
+                value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                placeholder="مثال: INF101"
+                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Semester & Study Level */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                السداسي البيداغوجي <span className="text-rose-400">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, semester: 'S1' })}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                    formData.semester === 'S1'
+                      ? 'border-blue-500 bg-blue-950/60 text-blue-200 ring-2 ring-blue-500/30'
+                      : 'border-slate-700 bg-slate-800/60 hover:bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  السداسي الأول (S1)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, semester: 'S2' })}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                    formData.semester === 'S2'
+                      ? 'border-purple-500 bg-purple-950/60 text-purple-200 ring-2 ring-purple-500/30'
+                      : 'border-slate-700 bg-slate-800/60 hover:bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  السداسي الثاني (S2)
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                الطور والمستوى الدراسي
+              </label>
+              <select
+                value={formData.studyLevel}
+                onChange={(e) => setFormData({ ...formData, studyLevel: e.target.value })}
+                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="L1">سنة أولى ليسانس (L1)</option>
+                <option value="L2">سنة ثانية ليسانس (L2)</option>
+                <option value="L3">سنة ثالثة ليسانس (L3)</option>
+                <option value="M1">سنة أولى ماستر (M1)</option>
+                <option value="M2">سنة ثانية ماستر (M2)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Multi-Select Specialties Component */}
+          <div className="bg-slate-950/40 border border-slate-800 p-3.5 rounded-xl space-y-2">
+            <MultiSelectSpecialties
+              selected={formData.specialties}
+              onChange={(specs) =>
+                setFormData({
+                  ...formData,
+                  specialties: specs,
+                  specialization: specs.join('، '),
+                })
+              }
+              currentStudyLevel={formData.studyLevel}
+            />
+          </div>
+
+          {/* Department Selection */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-200 mb-1">
+              القسم الأكاديمي
+            </label>
+            <select
+              value={formData.departmentId}
+              onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+              className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">بدون قسم / قسم عام / جذع مشترك</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Credits, Coefficient, Weekly Hours */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                المعامل (Coefficient)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                required
+                value={formData.coefficient}
+                onChange={(e) => setFormData({ ...formData, coefficient: Number(e.target.value) || 1 })}
+                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                الرصيد (ECTS Credits)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                required
+                value={formData.credits}
+                onChange={(e) => setFormData({ ...formData, credits: Number(e.target.value) || 1 })}
+                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-200 mb-1">
+                الحجم الساعي الأسبوعي
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="1"
+                max="20"
+                required
+                value={formData.weeklyHours}
+                onChange={(e) => setFormData({ ...formData, weeklyHours: Number(e.target.value) || 3 })}
+                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+              />
+            </div>
+          </div>
+
+          {/* Session Types Selection */}
+          <div className="border border-slate-800 rounded-xl p-3.5 bg-slate-950/50">
+            <label className="block text-xs font-semibold text-slate-200 mb-2">
+              أنواع الحصص المقررة في المقياس:
+            </label>
+            <div className="flex items-center gap-5 text-xs">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100">
+                <input
+                  type="checkbox"
+                  checked={formData.hasLecture}
+                  onChange={(e) => setFormData({ ...formData, hasLecture: e.target.checked })}
+                  className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                />
+                <span className="font-medium">محاضرة (Cours)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100">
+                <input
+                  type="checkbox"
+                  checked={formData.hasTD}
+                  onChange={(e) => setFormData({ ...formData, hasTD: e.target.checked })}
+                  className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                />
+                <span className="font-medium">أعمال موجهة (TD)</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100">
+                <input
+                  type="checkbox"
+                  checked={formData.hasTP}
+                  onChange={(e) => setFormData({ ...formData, hasTP: e.target.checked })}
+                  className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                />
+                <span className="font-medium">أعمال تطبيقية (TP مخبر)</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-end gap-3 border-t border-slate-800 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowFormModal(false)}
+              className="rounded-xl border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              إلغاء
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white gap-2 font-semibold shadow-lg shadow-indigo-600/20"
+            >
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>جارٍ الحفظ...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  <span>{editingCourse ? 'تحديث بيانات المقياس' : 'حفظ المقياس في الدليل'}</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
       </Dialog>
     </div>
   );

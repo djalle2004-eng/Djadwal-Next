@@ -8,5 +8,14 @@ export * from './repositories/index.js';
 export * from './api-schema.js';
 export * from './scheduling/index.js';
 export * from './constants/professor-ranks.js';
+export * from './constants/academic-specialties.js';
 export * from './excel/professor-excel.js';
-export * from './excel/course-curriculum-excel.js';
+export {
+  dryRunCoursesImport,
+  buildCoursesTemplateWorkbook,
+  type ExcelCourseInputRow,
+  type AnalyzedCourseRow,
+  type DryRunCourseSummary,
+  type DryRunCourseResult,
+} from './excel/course-curriculum-excel.js';
+export { isTimeOverlapping } from './conflict-detector.js';

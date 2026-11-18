@@ -42,6 +42,21 @@ function enrichCourseRow(row) {
     ? meta.specialization_ids
     : (specializationId ? [specializationId] : []);
 
+  let specialties = [];
+  if (Array.isArray(meta.specialties) && meta.specialties.length > 0) {
+    specialties = meta.specialties.map(s => String(s).trim()).filter(Boolean);
+  } else if (typeof meta.specialties === 'string' && meta.specialties.trim()) {
+    specialties = meta.specialties.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+  } else if (meta.specialization && typeof meta.specialization === 'string') {
+    specialties = meta.specialization.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+  } else if (row.specialization_name) {
+    specialties = [row.specialization_name];
+  }
+
+  const specializationStr = specialties.length > 0
+    ? specialties.join('، ')
+    : (meta.specialization || row.specialization_name || '');
+
   return {
     ...row,
     semester: row.semester || meta.semester || 'S1',
@@ -50,6 +65,9 @@ function enrichCourseRow(row) {
     study_level: row.study_level || meta.study_level || 'L1',
     specialization_id: specializationId,
     specialization_ids: specializationIds,
+    specialization: specializationStr,
+    specialization_name: specializationStr || row.specialization_name,
+    specialties,
     has_lecture: hasLecture,
     has_td: hasTD,
     has_tp: hasTP,
@@ -61,7 +79,7 @@ function enrichCourseRow(row) {
 async function listCourses(req, res) {
   try {
     const withArchived = req.query.withArchived === 'true';
-    const { semester, specialization_id, department_id, study_level, search } = req.query;
+    const { semester, specialization_id, specialization, specialty, department_id, study_level, search } = req.query;
 
     let rows = [];
     try {
@@ -102,6 +120,15 @@ async function listCourses(req, res) {
         (c) => c.specialization_id === specNum || (Array.isArray(c.specialization_ids) && c.specialization_ids.includes(specNum))
       );
     }
+    if (specialization || specialty) {
+      const targetSpec = String(specialization || specialty).trim().toLowerCase();
+      enriched = enriched.filter(
+        (c) =>
+          (Array.isArray(c.specialties) && c.specialties.some(s => s.toLowerCase().includes(targetSpec) || targetSpec.includes(s.toLowerCase()))) ||
+          (c.specialization && c.specialization.toLowerCase().includes(targetSpec)) ||
+          (c.specialization_name && c.specialization_name.toLowerCase().includes(targetSpec))
+      );
+    }
     if (department_id) {
       const deptNum = Number(department_id);
       enriched = enriched.filter((c) => c.department_id === deptNum);
@@ -114,7 +141,8 @@ async function listCourses(req, res) {
       enriched = enriched.filter(
         (c) =>
           (c.name && c.name.toLowerCase().includes(term)) ||
-          (c.code && c.code.toLowerCase().includes(term))
+          (c.code && c.code.toLowerCase().includes(term)) ||
+          (c.specialization && c.specialization.toLowerCase().includes(term))
       );
     }
 
@@ -162,6 +190,8 @@ async function createCourse(req, res) {
       department_id,
       specialization_id,
       specialization_ids,
+      specialization,
+      specialties,
       semester = 'S1',
       credits = 3,
       coefficient = 2,
@@ -184,6 +214,21 @@ async function createCourse(req, res) {
     if (has_td) session_types.push('td');
     if (has_tp) session_types.push('tp');
 
+    let parsedSpecialties = [];
+    if (Array.isArray(specialties)) {
+      parsedSpecialties = specialties.map(s => String(s).trim()).filter(Boolean);
+    } else if (typeof specialties === 'string' && specialties.trim()) {
+      parsedSpecialties = specialties.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+    } else if (typeof specialization === 'string' && specialization.trim()) {
+      parsedSpecialties = specialization.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+    } else if (Array.isArray(existingMeta.specialties)) {
+      parsedSpecialties = existingMeta.specialties.map(s => String(s).trim()).filter(Boolean);
+    }
+
+    const specializationText = parsedSpecialties.length > 0
+      ? parsedSpecialties.join('، ')
+      : (specialization || existingMeta.specialization || '');
+
     const metaPayload = {
       ...existingMeta,
       semester,
@@ -191,6 +236,8 @@ async function createCourse(req, res) {
       coefficient: Number(coefficient) || 2,
       study_level,
       session_types,
+      specialization: specializationText,
+      specialties: parsedSpecialties,
       specialization_id: specialization_id ? Number(specialization_id) : null,
       specialization_ids: Array.isArray(specialization_ids)
         ? specialization_ids.map(Number)
@@ -259,6 +306,8 @@ async function updateCourse(req, res) {
       department_id,
       specialization_id,
       specialization_ids,
+      specialization,
+      specialties,
       semester,
       credits,
       coefficient,
@@ -298,6 +347,25 @@ async function updateCourse(req, res) {
     if (isTD) session_types.push('td');
     if (isTP) session_types.push('tp');
 
+    let parsedSpecialties = undefined;
+    if (specialties !== undefined) {
+      if (Array.isArray(specialties)) {
+        parsedSpecialties = specialties.map(s => String(s).trim()).filter(Boolean);
+      } else if (typeof specialties === 'string') {
+        parsedSpecialties = specialties.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+      }
+    } else if (specialization !== undefined && typeof specialization === 'string') {
+      parsedSpecialties = specialization.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+    }
+
+    const currentSpecialties = Array.isArray(existingMeta.specialties)
+      ? existingMeta.specialties
+      : (existingMeta.specialization ? existingMeta.specialization.split(/[،,]/).map(s => s.trim()).filter(Boolean) : []);
+    const effectiveSpecialties = parsedSpecialties !== undefined ? parsedSpecialties : currentSpecialties;
+    const effectiveSpecializationStr = effectiveSpecialties.length > 0
+      ? effectiveSpecialties.join('، ')
+      : (specialization !== undefined ? specialization : (existingMeta.specialization || ''));
+
     const metaPayload = {
       ...existingMeta,
       semester: effectiveSemester,
@@ -305,6 +373,8 @@ async function updateCourse(req, res) {
       coefficient: effectiveCoef,
       study_level: effectiveLevel,
       session_types,
+      specialization: effectiveSpecializationStr,
+      specialties: effectiveSpecialties,
       specialization_id: specialization_id !== undefined ? (specialization_id ? Number(specialization_id) : null) : (current.specialization_id ?? existingMeta.specialization_id ?? null),
       specialization_ids: Array.isArray(specialization_ids)
         ? specialization_ids.map(Number)
@@ -563,12 +633,27 @@ async function commitCoursesImport(req, res) {
         if (hasTD) session_types.push('td');
         if (hasTP) session_types.push('tp');
 
+        let parsedSpecialties = [];
+        if (Array.isArray(item.specialties)) {
+          parsedSpecialties = item.specialties.map(s => String(s).trim()).filter(Boolean);
+        } else if (typeof item.specialties === 'string' && item.specialties.trim()) {
+          parsedSpecialties = item.specialties.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+        } else if (typeof item.specialization === 'string' && item.specialization.trim()) {
+          parsedSpecialties = item.specialization.split(/[،,]/).map(s => s.trim()).filter(Boolean);
+        }
+
+        const specializationText = parsedSpecialties.length > 0
+          ? parsedSpecialties.join('، ')
+          : (item.specialization || '');
+
         const metaPayload = {
           semester,
           credits,
           coefficient,
           study_level: studyLevel,
           session_types,
+          specialization: specializationText,
+          specialties: parsedSpecialties,
           specialization_id: specId,
           specialization_ids: specId ? [specId] : [],
           weekly_hours: weeklyHours

@@ -38,6 +38,8 @@ async function generateScheduleEndpoint(req, res) {
       semester_id,
       semester,
       specialization_id,
+      specialization,
+      specialty,
       academic_year,
       mode = 'fast',
       timeout_ms = 30000,
@@ -95,6 +97,18 @@ async function generateScheduleEndpoint(req, res) {
         const courseSpecId = c.specialization_id ?? meta.specialization_id;
         const courseSpecIds = Array.isArray(meta.specialization_ids) ? meta.specialization_ids : (courseSpecId ? [courseSpecId] : []);
         if (courseSpecIds.length > 0 && !courseSpecIds.includes(specNum)) {
+          return false;
+        }
+      }
+
+      const targetSpecName = specialization || specialty;
+      if (targetSpecName) {
+        const specTerm = String(targetSpecName).trim().toLowerCase();
+        const courseSpecs = Array.isArray(meta.specialties) ? meta.specialties : [];
+        const courseSpecText = (c.specialization || meta.specialization || '').toLowerCase();
+        const hasMatch = courseSpecs.some(s => s.toLowerCase().includes(specTerm) || specTerm.includes(s.toLowerCase())) ||
+                         courseSpecText.includes(specTerm);
+        if (courseSpecs.length > 0 && !hasMatch) {
           return false;
         }
       }
