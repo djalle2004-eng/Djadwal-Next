@@ -24,6 +24,8 @@ import {
   FileSpreadsheet,
   Upload,
   Check,
+  PowerOff,
+  Ban,
 } from 'lucide-react';
 import {
   Button,
@@ -62,6 +64,10 @@ export interface Course {
   lecture_hours?: number;
   td_hours?: number;
   tp_hours?: number;
+  is_active?: boolean;
+  disabled_academic_year?: string | null;
+  disabled_at?: string | null;
+  disabled_reason?: string | null;
   metadata?: string | Record<string, any>;
   deleted_at?: string | null;
   version?: number;
@@ -79,6 +85,10 @@ interface ParsedCourseMetadata {
   lecture_hours: number;
   td_hours: number;
   tp_hours: number;
+  is_active: boolean;
+  disabled_academic_year?: string | null;
+  disabled_at?: string | null;
+  disabled_reason?: string | null;
   session_types: string[];
 }
 
@@ -95,6 +105,8 @@ export default function CoursesPage() {
   const [studyLevelFilter, setStudyLevelFilter] = useState('all');
   const [specializationFilter, setSpecializationFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
+  const [togglingCourseId, setTogglingCourseId] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'code' | 'coefficient' | 'credits' | 'semester'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
@@ -192,6 +204,11 @@ export default function CoursesPage() {
     const calculatedTotal = lectureHours + tdHours + tpHours;
     const weeklyHours = Number(course.weekly_hours ?? meta.weekly_hours ?? (calculatedTotal > 0 ? calculatedTotal : 3.0));
 
+    const isActive = (course.is_active !== undefined ? Boolean(course.is_active) : (meta.is_active !== undefined ? Boolean(meta.is_active) : true)) && !course.deleted_at;
+    const disabledAcademicYear = course.disabled_academic_year || meta.disabled_academic_year || null;
+    const disabledAt = course.disabled_at || meta.disabled_at || null;
+    const disabledReason = course.disabled_reason || meta.disabled_reason || null;
+
     return {
       credits: Number(course.credits ?? meta.credits ?? 3),
       coefficient: Number(course.coefficient ?? meta.coefficient ?? 2),
@@ -203,6 +220,10 @@ export default function CoursesPage() {
       lecture_hours: lectureHours,
       td_hours: tdHours,
       tp_hours: tpHours,
+      is_active: isActive,
+      disabled_academic_year: disabledAcademicYear,
+      disabled_at: disabledAt,
+      disabled_reason: disabledReason,
       session_types: sessionTypes.length > 0 ? sessionTypes : ['lecture', 'td'],
     };
   };
@@ -317,6 +338,31 @@ export default function CoursesPage() {
       alert(`✅ تم استعادة المقياس "${course.name}" بنجاح!`);
     } catch (err: any) {
       alert('فشل الاستعادة: ' + (err.message || 'خطأ غير معروف'));
+    }
+  };
+
+  // Toggle Active / Disabled for current academic year (تعطيل أو تفعيل المقياس للسنة الحالية)
+  const handleToggleActive = async (course: Course) => {
+    setTogglingCourseId(course.id);
+    try {
+      const res = await api.post(`/catalog/courses/${course.id}/toggle-active`, {});
+      const updatedCourse = res?.course || {
+        ...course,
+        is_active: !parseCourseMeta(course).is_active
+      };
+      setCourses((prev) => prev.map((c) => (c.id === course.id ? updatedCourse : c)));
+
+      const isNowActive = parseCourseMeta(updatedCourse).is_active;
+      setUndoToast({
+        show: true,
+        message: res?.message_ar || (isNowActive
+          ? `✅ تم تفعيل المقياس "${course.name}" وإعادته لمصفوفة الجداول والإحصائيات.`
+          : `⚠️ تم تعطيل المقياس "${course.name}" للسنة الجامعية الحالية واستبعاده من الجدولة والإحصائيات.`),
+      });
+    } catch (err: any) {
+      alert('فشل تحديث حالة المقياس: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setTogglingCourseId(null);
     }
   };
 
@@ -502,7 +548,11 @@ export default function CoursesPage() {
         else if (typeFilter === 'td') matchesType = meta.session_types.includes('td');
         else if (typeFilter === 'lecture') matchesType = meta.session_types.includes('lecture');
 
-        return matchesSearch && matchesSemester && matchesLevel && matchesSpec && matchesType;
+        let matchesStatus = true;
+        if (statusFilter === 'active') matchesStatus = meta.is_active;
+        else if (statusFilter === 'disabled') matchesStatus = !meta.is_active;
+
+        return matchesSearch && matchesSemester && matchesLevel && matchesSpec && matchesType && matchesStatus;
       })
       .sort((a, b) => {
         const metaA = parseCourseMeta(a);
@@ -517,24 +567,32 @@ export default function CoursesPage() {
 
         return sortOrder === 'asc' ? comparison : -comparison;
       });
-  }, [courses, search, semesterFilter, studyLevelFilter, specializationFilter, typeFilter, sortBy, sortOrder]);
+  }, [courses, search, semesterFilter, studyLevelFilter, specializationFilter, typeFilter, statusFilter, sortBy, sortOrder]);
 
-  // Statistics
-  const s1Count = useMemo(() => {
-    return courses.filter((c) => parseCourseMeta(c).semester === 'S1').length;
+  // Statistics: strictly calculated from active courses (المقاييس المعطلة لا تدخل في الإحصائيات)
+  const activeCoursesList = useMemo(() => {
+    return courses.filter((c) => parseCourseMeta(c).is_active);
   }, [courses]);
+
+  const disabledCoursesList = useMemo(() => {
+    return courses.filter((c) => !parseCourseMeta(c).is_active);
+  }, [courses]);
+
+  const s1Count = useMemo(() => {
+    return activeCoursesList.filter((c) => parseCourseMeta(c).semester === 'S1').length;
+  }, [activeCoursesList]);
 
   const s2Count = useMemo(() => {
-    return courses.filter((c) => parseCourseMeta(c).semester === 'S2').length;
-  }, [courses]);
+    return activeCoursesList.filter((c) => parseCourseMeta(c).semester === 'S2').length;
+  }, [activeCoursesList]);
 
   const totalCredits = useMemo(() => {
-    return courses.reduce((sum, c) => sum + parseCourseMeta(c).credits, 0);
-  }, [courses]);
+    return activeCoursesList.reduce((sum, c) => sum + parseCourseMeta(c).credits, 0);
+  }, [activeCoursesList]);
 
   const totalCoefficients = useMemo(() => {
-    return courses.reduce((sum, c) => sum + parseCourseMeta(c).coefficient, 0);
-  }, [courses]);
+    return activeCoursesList.reduce((sum, c) => sum + parseCourseMeta(c).coefficient, 0);
+  }, [activeCoursesList]);
 
   return (
     <div className="space-y-6 pb-12" dir="rtl">
@@ -599,9 +657,20 @@ export default function CoursesPage() {
         <Card className="rounded-2xl border-border bg-card shadow-sm hover:shadow transition-shadow">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">إجمالي مقاييس الكلية</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">{courses.length} مقياس</h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">المقررات البيداغوجية النشطة</p>
+              <p className="text-xs font-medium text-muted-foreground">المقاييس النشطة في الجدولة</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <h3 className="text-2xl font-bold text-foreground">{activeCoursesList.length} مقياس</h3>
+                {disabledCoursesList.length > 0 && (
+                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/25">
+                    {disabledCoursesList.length} معطل للسنة
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {disabledCoursesList.length > 0
+                  ? `المعطلة مستبعدة تماماً من الجداول والإحصائيات (${disabledCoursesList.length})`
+                  : 'جميع المقاييس نشطة ومدرجة في الجداول'}
+              </p>
             </div>
             <div className="h-11 w-11 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
               <BookOpen className="h-6 w-6" />
@@ -753,6 +822,17 @@ export default function CoursesPage() {
               <option value="tp">تحتوي أعمال تطبيقية (TP)</option>
             </select>
 
+            {/* Status Filter (حالة التفعيل للسنة الجامعية الحالية) */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+            >
+              <option value="all">كل الحالات (نشط ومعطل)</option>
+              <option value="active">النشطة في الجدولة ({activeCoursesList.length})</option>
+              <option value="disabled">المعطلة للسنة الحالية ({disabledCoursesList.length})</option>
+            </select>
+
             {/* Sort Controls */}
             <div className="flex items-center gap-1.5 border border-input rounded-xl px-2.5 py-1.5 bg-background">
               <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
@@ -823,13 +903,28 @@ export default function CoursesPage() {
                     const meta = parseCourseMeta(course);
                     const isS1 = meta.semester === 'S1';
                     return (
-                      <tr key={course.id} className="hover:bg-muted/30 transition-colors">
+                      <tr
+                        key={course.id}
+                        className={`transition-colors border-b border-border/60 ${
+                          !meta.is_active
+                            ? 'bg-amber-500/[0.04] dark:bg-amber-950/20 opacity-80'
+                            : 'hover:bg-muted/30'
+                        }`}
+                      >
                         <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground text-center">
                           {course.id}
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="font-bold text-foreground text-base">
-                            {course.name}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-foreground text-base">
+                              {course.name}
+                            </span>
+                            {!meta.is_active && (
+                              <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25">
+                                <PowerOff className="h-3 w-3" />
+                                معطل للسنة الحالية {meta.disabled_academic_year ? `(${meta.disabled_academic_year})` : ''}
+                              </span>
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 font-mono">
                             {course.code ? (
@@ -940,6 +1035,31 @@ export default function CoursesPage() {
                             >
                               <Edit className="h-3.5 w-3.5" />
                               <span>تعديل</span>
+                            </button>
+
+                            {/* زر تعطيل / أرشفة المقياس خلال السنة الجامعية الحالية */}
+                            <button
+                              onClick={() => handleToggleActive(course)}
+                              disabled={togglingCourseId === course.id}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                                meta.is_active
+                                  ? 'text-amber-700 hover:text-amber-800 dark:text-amber-400 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40'
+                                  : 'text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40'
+                              }`}
+                              title={
+                                meta.is_active
+                                  ? 'تعطيل (أرشفة) المقياس خلال السنة الجامعية الحالية (استبعاد من الجدولة الآلية والإحصائيات)'
+                                  : 'تفعيل المقياس وإعادة إدراجه في مصفوفة الجداول والإحصائيات'
+                              }
+                            >
+                              {togglingCourseId === course.id ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : meta.is_active ? (
+                                <PowerOff className="h-3.5 w-3.5" />
+                              ) : (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              )}
+                              <span>{meta.is_active ? 'تعطيل' : 'تفعيل'}</span>
                             </button>
 
                             <button

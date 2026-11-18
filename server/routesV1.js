@@ -70,6 +70,7 @@ router.get(['/catalog/courses/:id', '/courses/:id'], courseModule.getCourse);
 router.put(['/catalog/courses/:id', '/courses/:id'], validateBody(schemas.updateCourseSchema), courseModule.updateCourse);
 router.delete(['/catalog/courses/:id', '/courses/:id'], courseModule.deleteCourse);
 router.post(['/catalog/courses/:id/restore', '/courses/:id/restore'], courseModule.restoreCourse);
+router.post(['/catalog/courses/:id/toggle-active', '/courses/:id/toggle-active'], courseModule.toggleCourseActive);
 
 // 6. Catalog - Groups
 router.get(['/catalog/groups', '/groups'], groupModule.listGroups);

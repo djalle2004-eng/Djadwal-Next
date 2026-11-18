@@ -25,6 +25,8 @@ export interface ExcelCourseInputRow {
   lecture_hours?: number | string | null;
   td_hours?: number | string | null;
   tp_hours?: number | string | null;
+  is_active?: boolean | string | number | null;
+  status?: string | null;
 }
 
 export interface FieldChange {
@@ -54,6 +56,7 @@ export interface AnalyzedCourseRow {
   lecture_hours: number;
   td_hours: number;
   tp_hours: number;
+  is_active: boolean;
   action: 'create' | 'update' | 'unchanged' | 'error';
   errorMessageAr?: string;
   changes?: FieldChange[];
@@ -194,6 +197,12 @@ const HEADER_MAP: Record<string, string> = {
   'ساعات اعمال تطبيقية': 'tp_hours',
   'ساعات tp': 'tp_hours',
   'tp_hours': 'tp_hours',
+
+  // Status / Active / Archive
+  'الحالة': 'is_active',
+  'حالة المقياس': 'is_active',
+  'status': 'is_active',
+  'is_active': 'is_active',
 };
 
 /**
@@ -339,6 +348,7 @@ export function dryRunCoursesImport(
         lecture_hours: 1.5,
         td_hours: 1.5,
         tp_hours: 0.0,
+        is_active: true,
         action: 'error',
         errorMessageAr: 'اسم المقياس حقل إجباري مفقود في هذا الصف.',
       });
@@ -353,6 +363,7 @@ export function dryRunCoursesImport(
     const hasLecture = parseBooleanFlag(row.has_lecture, true);
     const hasTD = parseBooleanFlag(row.has_td, true);
     const hasTP = parseBooleanFlag(row.has_tp, false);
+    const isActive = parseBooleanFlag(row.is_active, true);
 
     const parseHours = (v: any) => {
       const n = Number(v);
@@ -417,6 +428,7 @@ export function dryRunCoursesImport(
         lecture_hours: lectureHours,
         td_hours: tdHours,
         tp_hours: tpHours,
+        is_active: isActive,
         action: 'create',
       });
     } else {
@@ -577,6 +589,16 @@ export function dryRunCoursesImport(
         });
       }
 
+      const oldIsActive = (matchedCourse.is_active !== undefined ? Boolean(matchedCourse.is_active) : (existingMeta.is_active !== undefined ? Boolean(existingMeta.is_active) : true)) && !matchedCourse.deleted_at;
+      if (oldIsActive !== isActive) {
+        changes.push({
+          field: 'is_active',
+          fieldLabelAr: 'حالة النشاط',
+          oldValue: oldIsActive ? 'نشط' : 'معطل',
+          newValue: isActive ? 'نشط' : 'معطل',
+        });
+      }
+
       if (changes.length > 0) {
         toUpdateCount++;
         analyzedRows.push({
@@ -599,6 +621,7 @@ export function dryRunCoursesImport(
           lecture_hours: lectureHours,
           td_hours: tdHours,
           tp_hours: tpHours,
+          is_active: isActive,
           action: 'update',
           changes,
           existingCourse: matchedCourse,
@@ -625,6 +648,7 @@ export function dryRunCoursesImport(
           lecture_hours: lectureHours,
           td_hours: tdHours,
           tp_hours: tpHours,
+          is_active: isActive,
           action: 'unchanged',
           existingCourse: matchedCourse,
         });
@@ -692,7 +716,7 @@ export function buildCoursesExportWorkbook(courses: any[] = []): XLSX.WorkBook {
       'ساعات TD': tdHours,
       'ساعات TP': tpHours,
       'الحجم الساعي الأسبوعي': weeklyHours,
-      'الحالة': c.deleted_at ? 'مؤرشف' : 'نشط',
+      'الحالة': c.deleted_at ? 'محذوف' : (c.is_active === false ? 'معطل للسنة الحالية' : 'نشط'),
     };
   });
 

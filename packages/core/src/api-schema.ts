@@ -72,6 +72,9 @@ export const createCourseSchema = z.object({
   lecture_hours: z.coerce.number().min(0).max(20).optional(),
   td_hours: z.coerce.number().min(0).max(20).optional(),
   tp_hours: z.coerce.number().min(0).max(20).optional(),
+  is_active: z.boolean().optional().default(true),
+  disabled_academic_year: z.string().trim().max(50).optional().nullable(),
+  disabled_reason: z.string().trim().max(200).optional().nullable(),
   metadata: z.union([z.string(), z.record(z.string(), z.any())]).optional()
 });
 
@@ -94,6 +97,9 @@ export const updateCourseSchema = z.object({
   lecture_hours: z.coerce.number().min(0).max(20).optional(),
   td_hours: z.coerce.number().min(0).max(20).optional(),
   tp_hours: z.coerce.number().min(0).max(20).optional(),
+  is_active: z.boolean().optional(),
+  disabled_academic_year: z.string().trim().max(50).optional().nullable(),
+  disabled_reason: z.string().trim().max(200).optional().nullable(),
   metadata: z.union([z.string(), z.record(z.string(), z.any())]).optional(),
   version: z.coerce.number().int().optional()
 });

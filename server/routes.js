@@ -135,6 +135,7 @@ router.get('/courses/:id', authorize('courses', 'view'), courseModule.getCourse)
 router.post('/courses', authorize('courses', 'create'), courseModule.createCourse);
 router.put('/courses/:id', authorize('courses', 'update'), courseModule.updateCourse);
 router.delete('/courses/:id', authorize('courses', 'delete'), courseModule.deleteCourse);
+router.post('/courses/:id/toggle-active', authorize('courses', 'update'), courseModule.toggleCourseActive);
 
 // ==========================================
 // 5. Catalog: Groups (Strangler Proxy)

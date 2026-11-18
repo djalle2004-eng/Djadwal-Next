@@ -67,6 +67,11 @@ function enrichCourseRow(row) {
   const calculatedTotal = lectureHours + tdHours + tpHours;
   const weeklyHours = Number(row.weekly_hours ?? meta.weekly_hours ?? (calculatedTotal > 0 ? calculatedTotal : 3.0));
 
+  const isActive = (row.is_active !== undefined ? Boolean(row.is_active) : (meta.is_active !== undefined ? Boolean(meta.is_active) : true)) && !row.deleted_at;
+  const disabledAcademicYear = meta.disabled_academic_year || row.disabled_academic_year || null;
+  const disabledAt = meta.disabled_at || row.disabled_at || null;
+  const disabledReason = meta.disabled_reason || row.disabled_reason || null;
+
   return {
     ...row,
     semester: row.semester || meta.semester || 'S1',
@@ -85,6 +90,10 @@ function enrichCourseRow(row) {
     td_hours: tdHours,
     tp_hours: tpHours,
     weekly_hours: weeklyHours,
+    is_active: isActive,
+    disabled_academic_year: disabledAcademicYear,
+    disabled_at: disabledAt,
+    disabled_reason: disabledReason,
     session_types: sessionTypes.length > 0 ? sessionTypes : ['lecture', 'td'],
   };
 }
@@ -92,7 +101,7 @@ function enrichCourseRow(row) {
 async function listCourses(req, res) {
   try {
     const withArchived = req.query.withArchived === 'true';
-    const { semester, specialization_id, specialization, specialty, department_id, study_level, search } = req.query;
+    const { semester, specialization_id, specialization, specialty, department_id, study_level, search, status } = req.query;
 
     let rows = [];
     try {
@@ -148,6 +157,11 @@ async function listCourses(req, res) {
     }
     if (study_level) {
       enriched = enriched.filter((c) => c.study_level === study_level);
+    }
+    if (status === 'active') {
+      enriched = enriched.filter((c) => c.is_active !== false);
+    } else if (status === 'disabled') {
+      enriched = enriched.filter((c) => c.is_active === false);
     }
     if (search && search.trim()) {
       const term = search.trim().toLowerCase();
@@ -216,6 +230,9 @@ async function createCourse(req, res) {
       lecture_hours,
       td_hours,
       tp_hours,
+      is_active = true,
+      disabled_academic_year,
+      disabled_reason,
       metadata
     } = req.body;
 
@@ -272,7 +289,17 @@ async function createCourse(req, res) {
       lecture_hours: effectiveLectureHours,
       td_hours: effectiveTDHours,
       tp_hours: effectiveTPHours,
-      weekly_hours: effectiveWeekly
+      weekly_hours: effectiveWeekly,
+      is_active: is_active !== undefined ? Boolean(is_active) : (existingMeta.is_active !== undefined ? Boolean(existingMeta.is_active) : true),
+      disabled_academic_year: is_active === false
+        ? (disabled_academic_year !== undefined ? disabled_academic_year : (existingMeta.disabled_academic_year || null))
+        : (is_active === true ? null : (existingMeta.disabled_academic_year || null)),
+      disabled_at: is_active === false
+        ? (existingMeta.disabled_at || new Date().toISOString())
+        : (is_active === true ? null : (existingMeta.disabled_at || null)),
+      disabled_reason: is_active === false
+        ? (disabled_reason !== undefined ? disabled_reason : (existingMeta.disabled_reason || 'معطل للسنة الجامعية الحالية'))
+        : (is_active === true ? null : (existingMeta.disabled_reason || null))
     };
 
     const fullPayload = {
@@ -349,6 +376,9 @@ async function updateCourse(req, res) {
       lecture_hours,
       td_hours,
       tp_hours,
+      is_active,
+      disabled_academic_year,
+      disabled_reason,
       metadata,
       version
     } = req.body;
@@ -427,7 +457,17 @@ async function updateCourse(req, res) {
       lecture_hours: effectiveLectureHours,
       td_hours: effectiveTDHours,
       tp_hours: effectiveTPHours,
-      weekly_hours: effectiveWeekly
+      weekly_hours: effectiveWeekly,
+      is_active: is_active !== undefined ? Boolean(is_active) : (existingMeta.is_active !== undefined ? Boolean(existingMeta.is_active) : true),
+      disabled_academic_year: is_active === false
+        ? (disabled_academic_year !== undefined ? disabled_academic_year : (existingMeta.disabled_academic_year || null))
+        : (is_active === true ? null : (existingMeta.disabled_academic_year || null)),
+      disabled_at: is_active === false
+        ? (existingMeta.disabled_at || new Date().toISOString())
+        : (is_active === true ? null : (existingMeta.disabled_at || null)),
+      disabled_reason: is_active === false
+        ? (disabled_reason !== undefined ? disabled_reason : (existingMeta.disabled_reason || 'معطل للسنة الجامعية الحالية'))
+        : (is_active === true ? null : (existingMeta.disabled_reason || null))
     };
 
     const updatePayload = {
@@ -510,6 +550,72 @@ async function restoreCourse(req, res) {
     const result = await coursesRepository.restore(id, { userId: req.user?.id });
     res.json({ success: true, ...result });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * P17: Toggle course active/disabled status for current academic year (أرشفة / تعطيل المقياس للسنة الجامعية الحالية)
+ */
+async function toggleCourseActive(req, res) {
+  try {
+    const { id } = req.params;
+    const { academic_year } = req.body || {};
+
+    const current = await coursesRepository.get(id, { withArchived: true });
+    if (!current) {
+      return res.status(404).json({ error: 'المقياس غير موجود' });
+    }
+
+    let existingMeta = {};
+    if (typeof current.metadata === 'string') {
+      try { existingMeta = JSON.parse(current.metadata || '{}'); } catch { existingMeta = {}; }
+    } else if (typeof current.metadata === 'object' && current.metadata) {
+      existingMeta = current.metadata;
+    }
+
+    const currentIsActive = (existingMeta.is_active !== false) && (current.is_active !== false) && !current.deleted_at;
+    const nextIsActive = !currentIsActive;
+
+    let targetYear = academic_year || existingMeta.disabled_academic_year;
+    if (!targetYear) {
+      try {
+        const yearRows = await executeQuery('SELECT year_name FROM academic_years WHERE is_current = 1 LIMIT 1');
+        if (yearRows && yearRows[0]) {
+          targetYear = yearRows[0].year_name;
+        }
+      } catch {}
+    }
+
+    const metaPayload = {
+      ...existingMeta,
+      is_active: nextIsActive,
+      disabled_academic_year: nextIsActive ? null : (targetYear || 'السنة الحالية'),
+      disabled_at: nextIsActive ? null : new Date().toISOString(),
+      disabled_reason: nextIsActive ? null : 'معطل للسنة الجامعية الحالية'
+    };
+
+    let updated = null;
+    try {
+      updated = await coursesRepository.update(
+        id,
+        { metadata: JSON.stringify(metaPayload) },
+        { userId: req.user?.id }
+      );
+    } catch {
+      await executeQuery('UPDATE courses SET metadata = $1 WHERE id = $2', [JSON.stringify(metaPayload), id]);
+      updated = { ...current, metadata: JSON.stringify(metaPayload) };
+    }
+
+    res.json({
+      success: true,
+      message_ar: nextIsActive
+        ? `تم تفعيل المقياس "${current.name}" بنجاح وإعادته إلى مصفوفة الجداول والإحصائيات.`
+        : `تم تعطيل (أرشفة) المقياس "${current.name}" للسنة الجامعية الحالية بنجاح، واستبعاده من الجدولة الآلية والإحصائيات.`,
+      course: enrichCourseRow(updated || { ...current, metadata: JSON.stringify(metaPayload) })
+    });
+  } catch (err) {
+    console.error('[ToggleCourseActive] Error:', err);
     res.status(500).json({ error: err.message });
   }
 }
@@ -824,14 +930,19 @@ async function getCurriculumGuide(req, res) {
 
     const enriched = (courses || []).map(enrichCourseRow);
 
-    const s1Courses = enriched.filter((c) => c.semester === 'S1');
-    const s2Courses = enriched.filter((c) => c.semester === 'S2');
+    const activeCourses = enriched.filter((c) => c.is_active !== false);
+    const disabledCourses = enriched.filter((c) => c.is_active === false);
 
-    const totalCredits = enriched.reduce((sum, c) => sum + (c.credits || 0), 0);
-    const totalCoef = enriched.reduce((sum, c) => sum + (c.coefficient || 0), 0);
+    const s1Courses = activeCourses.filter((c) => c.semester === 'S1');
+    const s2Courses = activeCourses.filter((c) => c.semester === 'S2');
+
+    const totalCredits = activeCourses.reduce((sum, c) => sum + (c.credits || 0), 0);
+    const totalCoef = activeCourses.reduce((sum, c) => sum + (c.coefficient || 0), 0);
 
     res.json({
-      totalCourses: enriched.length,
+      totalCourses: activeCourses.length,
+      activeCount: activeCourses.length,
+      disabledCount: disabledCourses.length,
       s1Count: s1Courses.length,
       s2Count: s2Courses.length,
       totalCredits,
@@ -851,6 +962,7 @@ module.exports = {
   updateCourse,
   deleteCourse,
   restoreCourse,
+  toggleCourseActive,
   exportCoursesExcel,
   downloadCoursesTemplate,
   previewCoursesImport,

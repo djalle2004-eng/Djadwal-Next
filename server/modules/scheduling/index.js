@@ -87,6 +87,18 @@ async function generateScheduleEndpoint(req, res) {
         meta = {};
       }
 
+      // P17: Exclude disabled / archived courses for target academic year
+      const isCourseActive = (c.is_active !== false) && (meta.is_active !== false) && !c.deleted_at;
+      if (!isCourseActive) return false;
+
+      const targetYear = academic_year ? String(academic_year).trim() : '';
+      if (meta.disabled_academic_year) {
+        const disYear = String(meta.disabled_academic_year).trim();
+        if (!targetYear || disYear === targetYear || disYear === 'السنة الحالية') {
+          return false;
+        }
+      }
+
       if (targetSemesterStr) {
         const courseSem = c.semester || meta.semester || 'S1';
         if (courseSem !== targetSemesterStr) return false;
@@ -196,28 +208,40 @@ async function generateScheduleEndpoint(req, res) {
       ${whereStr}
     `, params);
 
-    // Build Scheduling Tasks with dynamic duration from course weekly hours allocation
-    const tasks = assignments.map(a => ({
-      id: a.id,
-      assignmentId: a.id,
-      courseId: a.course_id,
-      courseName: a.course_name || `مادة #${a.course_id}`,
-      professorId: a.professor_id,
-      professorName: a.professor_name || `أستاذ #${a.professor_id}`,
-      groupId: a.group_id,
-      groupName: a.group_name || `فوج #${a.group_id}`,
-      sessionType: a.session_type || 'lecture',
-      durationMinutes: resolveTaskDuration(a),
-      studentCount: 35,
-      assignedSlot: a.day_of_week !== null && a.start_time && a.end_time ? {
-        dayOfWeek: Number(a.day_of_week),
-        startTime: a.start_time,
-        endTime: a.end_time
-      } : undefined,
-      assignedRoomId: a.room_id,
-      assignedRoomName: a.room_name,
-      fixed: false
-    }));
+    // Build Scheduling Tasks with dynamic duration from course weekly hours allocation (excluding disabled/archived courses)
+    const activeCourseIdSet = new Set(courses.map(c => c.id));
+    const tasks = assignments
+      .filter(a => {
+        const cInfo = coursesMap.get(a.course_id);
+        if (cInfo && (cInfo.is_active === false || cInfo.deleted_at)) {
+          return false;
+        }
+        if (courses.length > 0 && !activeCourseIdSet.has(a.course_id)) {
+          return false;
+        }
+        return true;
+      })
+      .map(a => ({
+        id: a.id,
+        assignmentId: a.id,
+        courseId: a.course_id,
+        courseName: a.course_name || `مادة #${a.course_id}`,
+        professorId: a.professor_id,
+        professorName: a.professor_name || `أستاذ #${a.professor_id}`,
+        groupId: a.group_id,
+        groupName: a.group_name || `فوج #${a.group_id}`,
+        sessionType: a.session_type || 'lecture',
+        durationMinutes: resolveTaskDuration(a),
+        studentCount: 35,
+        assignedSlot: a.day_of_week !== null && a.start_time && a.end_time ? {
+          dayOfWeek: Number(a.day_of_week),
+          startTime: a.start_time,
+          endTime: a.end_time
+        } : undefined,
+        assignedRoomId: a.room_id,
+        assignedRoomName: a.room_name,
+        fixed: false
+      }));
 
     // Build Constraints
     const constraints = buildConstraints({
@@ -386,6 +410,8 @@ async function explainConflictsEndpoint(req, res) {
       const rows = await executeQuery(`
         SELECT a.*,
                c.name as course_name,
+               c.metadata as course_metadata,
+               c.deleted_at as course_deleted_at,
                p.name as professor_name,
                g.name as group_name,
                r.name as room_name,
@@ -398,7 +424,18 @@ async function explainConflictsEndpoint(req, res) {
         ${whereStr}
       `, params);
 
-      taskList = rows.map(a => ({
+      taskList = rows
+        .filter(a => {
+          if (a.course_deleted_at) return false;
+          let meta = {};
+          try {
+            if (typeof a.course_metadata === 'string') meta = JSON.parse(a.course_metadata || '{}');
+            else if (typeof a.course_metadata === 'object' && a.course_metadata) meta = a.course_metadata;
+          } catch {}
+          if (meta.is_active === false) return false;
+          return true;
+        })
+        .map(a => ({
         id: a.id,
         courseId: a.course_id,
         courseName: a.course_name || `مادة #${a.course_id}`,

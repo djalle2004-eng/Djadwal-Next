@@ -123,6 +123,12 @@ const HEADER_MAP = {
   'ساعات اعمال تطبيقية': 'tp_hours',
   'ساعات tp': 'tp_hours',
   'tp_hours': 'tp_hours',
+
+  // Status / Active / Archive
+  'الحالة': 'is_active',
+  'حالة المقياس': 'is_active',
+  'status': 'is_active',
+  'is_active': 'is_active',
 };
 
 function normalizeRawCourseRow(rawRow) {
@@ -245,6 +251,7 @@ function dryRunCoursesImport(
         lecture_hours: 1.5,
         td_hours: 1.5,
         tp_hours: 0.0,
+        is_active: true,
         action: 'error',
         errorMessageAr: 'اسم المقياس حقل إجباري مفقود في هذا الصف.',
       });
@@ -259,6 +266,7 @@ function dryRunCoursesImport(
     const hasLecture = parseBooleanFlag(row.has_lecture, true);
     const hasTD = parseBooleanFlag(row.has_td, true);
     const hasTP = parseBooleanFlag(row.has_tp, false);
+    const isActive = parseBooleanFlag(row.is_active, true);
 
     const parseHours = (v) => {
       const n = Number(v);
@@ -321,6 +329,7 @@ function dryRunCoursesImport(
         lecture_hours: lectureHours,
         td_hours: tdHours,
         tp_hours: tpHours,
+        is_active: isActive,
         action: 'create',
       });
     } else {
@@ -477,6 +486,16 @@ function dryRunCoursesImport(
         });
       }
 
+      const oldIsActive = (matchedCourse.is_active !== undefined ? Boolean(matchedCourse.is_active) : (existingMeta.is_active !== undefined ? Boolean(existingMeta.is_active) : true)) && !matchedCourse.deleted_at;
+      if (oldIsActive !== isActive) {
+        changes.push({
+          field: 'is_active',
+          fieldLabelAr: 'حالة النشاط',
+          oldValue: oldIsActive ? 'نشط' : 'معطل',
+          newValue: isActive ? 'نشط' : 'معطل',
+        });
+      }
+
       if (changes.length > 0) {
         toUpdateCount++;
         analyzedRows.push({
@@ -499,6 +518,7 @@ function dryRunCoursesImport(
           lecture_hours: lectureHours,
           td_hours: tdHours,
           tp_hours: tpHours,
+          is_active: isActive,
           action: 'update',
           changes,
           existingCourse: matchedCourse,
@@ -525,6 +545,7 @@ function dryRunCoursesImport(
           lecture_hours: lectureHours,
           td_hours: tdHours,
           tp_hours: tpHours,
+          is_active: isActive,
           action: 'unchanged',
           existingCourse: matchedCourse,
         });
@@ -588,7 +609,7 @@ function buildCoursesExportWorkbook(courses = []) {
       'ساعات TD': tdHours,
       'ساعات TP': tpHours,
       'الحجم الساعي الأسبوعي': weeklyHours,
-      'الحالة': c.deleted_at ? 'مؤرشف' : 'نشط',
+      'الحالة': c.deleted_at ? 'محذوف' : (c.is_active === false ? 'معطل للسنة الحالية' : 'نشط'),
     };
   });
 
