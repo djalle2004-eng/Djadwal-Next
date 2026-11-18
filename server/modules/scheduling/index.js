@@ -36,6 +36,8 @@ async function generateScheduleEndpoint(req, res) {
 
     const {
       semester_id,
+      semester,
+      specialization_id,
       academic_year,
       mode = 'fast',
       timeout_ms = 30000,
@@ -48,7 +50,57 @@ async function generateScheduleEndpoint(req, res) {
     const rooms = await executeQuery('SELECT id, name, capacity, deleted_at FROM rooms WHERE deleted_at IS NULL');
     const professors = await executeQuery('SELECT id, name, deleted_at FROM professors WHERE deleted_at IS NULL');
     const groups = await executeQuery('SELECT id, name, specialization, deleted_at FROM groups WHERE deleted_at IS NULL');
-    const courses = await executeQuery('SELECT id, name, code, deleted_at FROM courses WHERE deleted_at IS NULL');
+    
+    // P16: Fetch courses with curriculum mapping (semester, specialization, credits, coefficient)
+    let rawCourses = [];
+    try {
+      rawCourses = await executeQuery('SELECT id, name, code, metadata, semester, specialization_id, credits, coefficient, deleted_at FROM courses WHERE deleted_at IS NULL');
+    } catch {
+      rawCourses = await executeQuery('SELECT id, name, code, metadata, deleted_at FROM courses WHERE deleted_at IS NULL');
+    }
+
+    // Resolve target semester string (S1 / S2)
+    let targetSemesterStr = null;
+    if (semester) {
+      targetSemesterStr = String(semester).trim().toUpperCase() === '2' || String(semester).trim().toUpperCase() === 'S2' ? 'S2' : 'S1';
+    } else if (semester_id) {
+      try {
+        const semRows = await executeQuery('SELECT semester_name FROM semesters WHERE id = $1', [Number(semester_id)]);
+        if (semRows && semRows[0]) {
+          const sName = String(semRows[0].semester_name || '');
+          targetSemesterStr = sName.includes('2') || sName.toUpperCase().includes('S2') ? 'S2' : 'S1';
+        }
+      } catch {
+        targetSemesterStr = Number(semester_id) === 2 ? 'S2' : 'S1';
+      }
+    }
+
+    // Filter courses relevant to target semester and specialization
+    const courses = (rawCourses || []).filter((c) => {
+      let meta = {};
+      try {
+        if (typeof c.metadata === 'string') meta = JSON.parse(c.metadata || '{}');
+        else if (typeof c.metadata === 'object' && c.metadata) meta = c.metadata;
+      } catch {
+        meta = {};
+      }
+
+      if (targetSemesterStr) {
+        const courseSem = c.semester || meta.semester || 'S1';
+        if (courseSem !== targetSemesterStr) return false;
+      }
+
+      if (specialization_id) {
+        const specNum = Number(specialization_id);
+        const courseSpecId = c.specialization_id ?? meta.specialization_id;
+        const courseSpecIds = Array.isArray(meta.specialization_ids) ? meta.specialization_ids : (courseSpecId ? [courseSpecId] : []);
+        if (courseSpecIds.length > 0 && !courseSpecIds.includes(specNum)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
 
     // 2. Fetch assignments to schedule/reschedule
     const whereClauses = [];
@@ -62,6 +114,11 @@ async function generateScheduleEndpoint(req, res) {
     if (semester_id) {
       whereClauses.push(`s.id = $${idx++}`);
       params.push(Number(semester_id));
+    }
+    if (semester && !semester_id) {
+      whereClauses.push(`(a.semester = $${idx} OR s.semester_name = $${idx})`);
+      params.push(String(semester));
+      idx++;
     }
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';

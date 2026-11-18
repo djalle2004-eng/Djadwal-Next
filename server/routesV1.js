@@ -59,6 +59,11 @@ router.delete(['/catalog/rooms/:id', '/rooms/:id'], roomModule.deleteRoom);
 router.post(['/catalog/rooms/:id/restore', '/rooms/:id/restore'], roomModule.restoreRoom);
 
 // 5. Catalog - Courses
+router.get(['/catalog/courses/export', '/courses/export'], courseModule.exportCoursesExcel);
+router.get(['/catalog/courses/template', '/courses/template'], courseModule.downloadCoursesTemplate);
+router.post(['/catalog/courses/import/preview', '/courses/import/preview'], courseModule.previewCoursesImport);
+router.post(['/catalog/courses/import', '/courses/import'], courseModule.commitCoursesImport);
+router.get(['/catalog/curriculum', '/curriculum'], courseModule.getCurriculumGuide);
 router.get(['/catalog/courses', '/courses'], courseModule.listCourses);
 router.post(['/catalog/courses', '/courses'], validateBody(schemas.createCourseSchema), courseModule.createCourse);
 router.get(['/catalog/courses/:id', '/courses/:id'], courseModule.getCourse);

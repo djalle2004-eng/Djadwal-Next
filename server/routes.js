@@ -126,6 +126,11 @@ router.delete('/rooms/:id', authorize('rooms', 'delete'), roomModule.deleteRoom)
 // 4. Catalog: Courses (Strangler Proxy)
 // ==========================================
 router.get('/courses', authorize('courses', 'view'), createStranglerProxy('courses', courseModule.listCourses, courseModule.listCourses));
+router.get('/courses/export', authorize('courses', 'view'), courseModule.exportCoursesExcel);
+router.get('/courses/template', authorize('courses', 'view'), courseModule.downloadCoursesTemplate);
+router.post('/courses/import/preview', authorize('courses', 'create'), courseModule.previewCoursesImport);
+router.post('/courses/import', authorize('courses', 'create'), courseModule.commitCoursesImport);
+router.get('/curriculum', authorize('courses', 'view'), courseModule.getCurriculumGuide);
 router.get('/courses/:id', authorize('courses', 'view'), courseModule.getCourse);
 router.post('/courses', authorize('courses', 'create'), courseModule.createCourse);
 router.put('/courses/:id', authorize('courses', 'update'), courseModule.updateCourse);

@@ -36,6 +36,7 @@ module.exports = {
     'backup_history',
     'change_log',
     'courses',
+    'course_specializations',
     'departments',
     'email_logs',
     'email_settings',

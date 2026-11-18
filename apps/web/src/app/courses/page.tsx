@@ -21,6 +21,9 @@ import {
   ArrowRightLeft,
   Calendar,
   SlidersHorizontal,
+  FileSpreadsheet,
+  Upload,
+  Check,
 } from 'lucide-react';
 import {
   Button,
@@ -34,6 +37,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import DeleteImpactModal from '@/components/DeleteImpactModal';
 import UndoToast from '@/components/UndoToast';
+import ImportCoursesModal from '@/components/ImportCoursesModal';
 
 export interface Course {
   id: number;
@@ -42,8 +46,16 @@ export interface Course {
   description?: string;
   credits?: number;
   coefficient?: number;
+  semester?: string;
+  study_level?: string;
+  specialization_id?: number;
+  specialization_name?: string;
   department_id?: number;
   department_name?: string;
+  has_lecture?: boolean;
+  has_td?: boolean;
+  has_tp?: boolean;
+  weekly_hours?: number;
   metadata?: string | Record<string, any>;
   deleted_at?: string | null;
   version?: number;
@@ -54,19 +66,31 @@ interface ParsedCourseMetadata {
   credits: number;
   coefficient: number;
   semester: string;
+  study_level: string;
+  specialization: string;
+  weekly_hours: number;
   session_types: string[];
 }
 
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [archivedCourses, setArchivedCourses] = useState<Course[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters
   const [search, setSearch] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('all');
+  const [studyLevelFilter, setStudyLevelFilter] = useState('all');
+  const [specializationFilter, setSpecializationFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<'name' | 'code' | 'coefficient' | 'credits'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'code' | 'coefficient' | 'credits' | 'semester'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
+
+  // Excel Import Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Delete Impact Modal State
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -91,6 +115,10 @@ export default function CoursesPage() {
     credits: 3,
     coefficient: 2,
     semester: 'S1',
+    studyLevel: 'L1',
+    specialization: '',
+    departmentId: '',
+    weeklyHours: 3.0,
     hasLecture: true,
     hasTD: true,
     hasTP: false,
@@ -111,22 +139,33 @@ export default function CoursesPage() {
       meta = course.metadata;
     }
 
+    const sessionTypes = Array.isArray(meta.session_types)
+      ? meta.session_types
+      : [
+          course.has_lecture !== false ? 'lecture' : null,
+          course.has_td !== false ? 'td' : null,
+          course.has_tp ? 'tp' : null,
+        ].filter(Boolean);
+
     return {
-      credits: Number(meta.credits ?? course.credits ?? 3),
-      coefficient: Number(meta.coefficient ?? course.coefficient ?? 2),
-      semester: meta.semester || 'S1',
-      session_types: Array.isArray(meta.session_types)
-        ? meta.session_types
-        : ['lecture', 'td'],
+      credits: Number(course.credits ?? meta.credits ?? 3),
+      coefficient: Number(course.coefficient ?? meta.coefficient ?? 2),
+      semester: course.semester || meta.semester || 'S1',
+      study_level: course.study_level || meta.study_level || 'L1',
+      specialization: course.specialization_name || meta.specialization || '',
+      weekly_hours: Number(course.weekly_hours ?? meta.weekly_hours ?? 3.0),
+      session_types: sessionTypes.length > 0 ? sessionTypes : ['lecture', 'td'],
     };
   };
 
   const loadCourses = async () => {
     setLoading(true);
     try {
-      const [activeData, allData] = await Promise.all([
+      const [activeData, allData, deptsData, groupsData] = await Promise.all([
         api.get('/catalog/courses?limit=1000'),
         api.get('/catalog/courses?withArchived=true&limit=1000'),
+        api.get('/catalog/departments').catch(() => []),
+        api.get('/catalog/groups').catch(() => []),
       ]);
 
       if (Array.isArray(activeData)) {
@@ -136,8 +175,26 @@ export default function CoursesPage() {
         const archived = allData.filter((c: Course) => c.deleted_at !== null && c.deleted_at !== undefined);
         setArchivedCourses(archived);
       }
+      if (Array.isArray(deptsData)) {
+        setDepartments(deptsData);
+      }
+
+      // Extract unique specializations from courses and groups
+      const specSet = new Set<string>();
+      if (Array.isArray(groupsData)) {
+        groupsData.forEach((g: any) => {
+          if (g.specialization && g.specialization.trim()) specSet.add(g.specialization.trim());
+        });
+      }
+      if (Array.isArray(activeData)) {
+        activeData.forEach((c: Course) => {
+          const meta = parseCourseMeta(c);
+          if (meta.specialization && meta.specialization.trim()) specSet.add(meta.specialization.trim());
+        });
+      }
+      setSpecializations(Array.from(specSet).sort());
     } catch (err: any) {
-      console.error('Failed to load courses:', err);
+      console.error('Failed to load courses data:', err);
     } finally {
       setLoading(false);
     }
@@ -218,6 +275,10 @@ export default function CoursesPage() {
       credits: 3,
       coefficient: 2,
       semester: 'S1',
+      studyLevel: 'L1',
+      specialization: '',
+      departmentId: '',
+      weeklyHours: 3.0,
       hasLecture: true,
       hasTD: true,
       hasTP: false,
@@ -236,6 +297,10 @@ export default function CoursesPage() {
       credits: meta.credits,
       coefficient: meta.coefficient,
       semester: meta.semester,
+      studyLevel: meta.study_level,
+      specialization: meta.specialization,
+      departmentId: course.department_id ? String(course.department_id) : '',
+      weeklyHours: meta.weekly_hours,
       hasLecture: meta.session_types.includes('lecture'),
       hasTD: meta.session_types.includes('td'),
       hasTP: meta.session_types.includes('tp'),
@@ -260,23 +325,36 @@ export default function CoursesPage() {
     if (formData.hasTP) session_types.push('tp');
 
     const metadataPayload = {
-      credits: Number(formData.credits) || 0,
-      coefficient: Number(formData.coefficient) || 1,
+      credits: Number(formData.credits) || 3,
+      coefficient: Number(formData.coefficient) || 2,
       semester: formData.semester,
+      study_level: formData.studyLevel,
+      specialization: formData.specialization.trim(),
+      weekly_hours: Number(formData.weeklyHours) || 3.0,
       session_types,
+    };
+
+    const payload = {
+      name: formData.name.trim(),
+      code: formData.code.trim() || undefined,
+      department_id: formData.departmentId ? Number(formData.departmentId) : undefined,
+      semester: formData.semester,
+      credits: Number(formData.credits) || 3,
+      coefficient: Number(formData.coefficient) || 2,
+      study_level: formData.studyLevel,
+      has_lecture: formData.hasLecture,
+      has_td: formData.hasTD,
+      has_tp: formData.hasTP,
+      weekly_hours: Number(formData.weeklyHours) || 3.0,
+      metadata: metadataPayload,
+      ...(editingCourse ? { version: editingCourse.version } : {}),
     };
 
     try {
       if (editingCourse) {
-        // Optimistic Locking Update
         await api.put(
           `/catalog/courses/${editingCourse.id}`,
-          {
-            name: formData.name.trim(),
-            code: formData.code.trim() || undefined,
-            metadata: metadataPayload,
-            version: editingCourse.version,
-          },
+          payload,
           {
             headers: {
               'Idempotency-Key': idempotencyKey,
@@ -284,14 +362,9 @@ export default function CoursesPage() {
           }
         );
       } else {
-        // Create
         await api.post(
           '/catalog/courses',
-          {
-            name: formData.name.trim(),
-            code: formData.code.trim() || undefined,
-            metadata: metadataPayload,
-          },
+          payload,
           {
             headers: {
               'Idempotency-Key': idempotencyKey,
@@ -315,37 +388,15 @@ export default function CoursesPage() {
     }
   };
 
-  // Export to CSV
-  const handleExportCSV = () => {
-    const listToExport = activeTab === 'active' ? filteredCourses : archivedCourses;
-    const headers = ['#', 'اسم المقياس', 'رمز المقياس', 'السداسي', 'المعامل', 'الرصيد', 'نوع الحصص', 'الحالة'];
-    const rows = listToExport.map((c) => {
-      const meta = parseCourseMeta(c);
-      const typesAr = meta.session_types
-        .map((t) => (t === 'lecture' ? 'محاضرة' : t === 'td' ? 'TD' : 'TP'))
-        .join(' + ');
-      return [
-        c.id,
-        `"${c.name || ''}"`,
-        `"${c.code || ''}"`,
-        `"${meta.semester}"`,
-        meta.coefficient,
-        meta.credits,
-        `"${typesAr}"`,
-        c.deleted_at ? 'مؤرشف' : 'نشط',
-      ];
-    });
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `courses-list-${activeTab}-${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  // Export to Excel (.xlsx)
+  const handleExportExcel = () => {
+    let url = '/api/v1/courses/export';
+    const params = new URLSearchParams();
+    if (semesterFilter !== 'all') params.append('semester', semesterFilter);
+    if (activeTab === 'archived') params.append('withArchived', 'true');
+    const queryString = params.toString();
+    if (queryString) url += `?${queryString}`;
+    window.open(url, '_blank');
   };
 
   // Filtered and sorted courses
@@ -358,13 +409,17 @@ export default function CoursesPage() {
 
         const meta = parseCourseMeta(c);
         const matchesSemester = semesterFilter === 'all' || meta.semester === semesterFilter;
+        const matchesLevel = studyLevelFilter === 'all' || meta.study_level === studyLevelFilter;
+        const matchesSpec =
+          specializationFilter === 'all' ||
+          meta.specialization.toLowerCase() === specializationFilter.toLowerCase();
 
         let matchesType = true;
         if (typeFilter === 'tp') matchesType = meta.session_types.includes('tp');
         else if (typeFilter === 'td') matchesType = meta.session_types.includes('td');
         else if (typeFilter === 'lecture') matchesType = meta.session_types.includes('lecture');
 
-        return matchesSearch && matchesSemester && matchesType;
+        return matchesSearch && matchesSemester && matchesLevel && matchesSpec && matchesType;
       })
       .sort((a, b) => {
         const metaA = parseCourseMeta(a);
@@ -375,68 +430,80 @@ export default function CoursesPage() {
         else if (sortBy === 'code') comparison = (a.code || '').localeCompare(b.code || '');
         else if (sortBy === 'coefficient') comparison = metaA.coefficient - metaB.coefficient;
         else if (sortBy === 'credits') comparison = metaA.credits - metaB.credits;
+        else if (sortBy === 'semester') comparison = metaA.semester.localeCompare(metaB.semester);
 
         return sortOrder === 'asc' ? comparison : -comparison;
       });
-  }, [courses, search, semesterFilter, typeFilter, sortBy, sortOrder]);
+  }, [courses, search, semesterFilter, studyLevelFilter, specializationFilter, typeFilter, sortBy, sortOrder]);
 
   // Statistics
+  const s1Count = useMemo(() => {
+    return courses.filter((c) => parseCourseMeta(c).semester === 'S1').length;
+  }, [courses]);
+
+  const s2Count = useMemo(() => {
+    return courses.filter((c) => parseCourseMeta(c).semester === 'S2').length;
+  }, [courses]);
+
   const totalCredits = useMemo(() => {
     return courses.reduce((sum, c) => sum + parseCourseMeta(c).credits, 0);
   }, [courses]);
 
-  const tpCoursesCount = useMemo(() => {
-    return courses.filter((c) => parseCourseMeta(c).session_types.includes('tp')).length;
+  const totalCoefficients = useMemo(() => {
+    return courses.reduce((sum, c) => sum + parseCourseMeta(c).coefficient, 0);
   }, [courses]);
 
   return (
     <div className="space-y-6 pb-12" dir="rtl">
-      {/* Top Header & Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-5">
+      {/* Top Header & Pedagogical Curriculum Guide Title */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-border pb-5">
         <div>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <BookOpen className="h-6 w-6" />
+            <div className="h-12 w-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-inner">
+              <BookOpen className="h-7 w-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                إدارة المقاييس والمواد (Courses)
-                <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200">
-                  V1 Production
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                  دليل المقاييس والربط الهيكلي بالسداسيات والتخصصات
+                </h1>
+                <Badge variant="outline" className="text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 font-semibold">
+                  P16 Curriculum Guide
                 </Badge>
-              </h1>
+              </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                تحديد المعاملات والأرصدة، السداسيات ونوعية الحصص (محاضرات، أعمال موجهة وتطبيقية)
+                دليل المقاييس البيداغوجي وفق المعايير الجزائرية وتغذية محرك الجدولة الآلي (P13) بقواعد صحيحة
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Legacy Switcher */}
-          <Link
-            href="/legacy/courses"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted rounded-xl transition-colors border border-border"
-            title="الانتقال إلى الواجهة الكلاسيكية القديمة"
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-            <span>الواجهة الكلاسيكية (Legacy)</span>
-          </Link>
-
+        {/* Global Actions Toolbar */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button
-            onClick={handleExportCSV}
+            onClick={() => setIsImportModalOpen(true)}
             variant="outline"
             size="sm"
-            className="gap-1.5 rounded-xl border-border hover:bg-muted"
+            className="gap-2 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium"
+          >
+            <Upload className="h-4 w-4" />
+            <span>استيراد من Excel</span>
+          </Button>
+
+          <Button
+            onClick={handleExportExcel}
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-medium"
           >
             <Download className="h-4 w-4" />
-            <span>تصدير CSV</span>
+            <span>تصدير دليل Excel</span>
           </Button>
 
           <Button
             onClick={handleOpenAdd}
             size="sm"
-            className="gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            className="gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm font-semibold"
           >
             <Plus className="h-4 w-4" />
             <span>إضافة مقياس جديد</span>
@@ -444,73 +511,75 @@ export default function CoursesPage() {
         </div>
       </div>
 
-      {/* Stats Summary Cards */}
+      {/* KPI Pedagogical Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="rounded-2xl border-border bg-card shadow-sm">
+        <Card className="rounded-2xl border-border bg-card shadow-sm hover:shadow transition-shadow">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">إجمالي المقاييس النشطة</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">{courses.length}</h3>
+              <p className="text-xs font-medium text-muted-foreground">إجمالي مقاييس الكلية</p>
+              <h3 className="text-2xl font-bold text-foreground mt-1">{courses.length} مقياس</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">المقررات البيداغوجية النشطة</p>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <BookOpen className="h-5 w-5" />
+            <div className="h-11 w-11 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <BookOpen className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-border bg-card shadow-sm">
+        <Card className="rounded-2xl border-border bg-card shadow-sm hover:shadow transition-shadow">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">مجموع الأرصدة (ECTS)</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">
-                {totalCredits} <span className="text-xs font-normal text-muted-foreground">رصيد</span>
+              <p className="text-xs font-medium text-blue-700 dark:text-blue-400">السداسي الأول (S1)</p>
+              <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mt-1">{s1Count} مقياس</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">الفصل الخريفي / الشتوي</p>
+            </div>
+            <div className="h-11 w-11 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <Calendar className="h-6 w-6" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-border bg-card shadow-sm hover:shadow transition-shadow">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-purple-700 dark:text-purple-400">السداسي الثاني (S2)</p>
+              <h3 className="text-2xl font-bold text-purple-700 dark:text-purple-300 mt-1">{s2Count} مقياس</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">الفصل الربيعي</p>
+            </div>
+            <div className="h-11 w-11 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Layers className="h-6 w-6" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-border bg-card shadow-sm hover:shadow transition-shadow">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">الأرصدة والمعاملات</p>
+              <h3 className="text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">
+                {totalCredits} <span className="text-xs font-normal text-muted-foreground">رصيد</span> / {totalCoefficients} <span className="text-xs font-normal text-muted-foreground">معامل</span>
               </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">معايير نظام LMD المعتمدة</p>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <Award className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">مقاييس بأعمال تطبيقية (TP)</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">{tpCoursesCount}</h3>
-              <p className="text-xs text-muted-foreground">تتطلب قاعات مخابر</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
-              <Layers className="h-5 w-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-2xl border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">سلة المؤرشفات</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">{archivedCourses.length}</h3>
-              <p className="text-xs text-muted-foreground">مقاييس محذوفة بأمان</p>
-            </div>
-            <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400">
-              <Archive className="h-5 w-5" />
+            <div className="h-11 w-11 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Award className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Navigation Tabs (Active vs Archived) */}
+      {/* Tabs: Active Courses vs Soft Deleted Archive */}
       <div className="flex items-center gap-2 border-b border-border pb-1">
         <button
           onClick={() => setActiveTab('active')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-colors border-b-2 ${
             activeTab === 'active'
-              ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-500/5'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5'
               : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
           }`}
         >
           <BookOpen className="h-4 w-4" />
-          <span>المقاييس النشطة</span>
+          <span>دليل المقاييس المعتمد</span>
           <Badge variant="neutral" className="mr-1 text-xs px-2 py-0.5">
             {courses.length}
           </Badge>
@@ -525,49 +594,83 @@ export default function CoursesPage() {
           }`}
         >
           <Archive className="h-4 w-4" />
-          <span>المؤرشفات / المحذوفات</span>
+          <span>المقاييس المؤرشفة / المحذوفة</span>
           <Badge variant="outline" className="mr-1 text-xs px-2 py-0.5 text-rose-600 border-rose-200">
             {archivedCourses.length}
           </Badge>
         </button>
       </div>
 
-      {/* Filters & Search Toolbar (Only for Active tab) */}
+      {/* Advanced Pedagogical Filters Toolbar */}
       {activeTab === 'active' && (
-        <div className="bg-card rounded-2xl border border-border p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex flex-1 flex-wrap items-center gap-3 w-full">
-            <div className="relative w-full sm:w-72">
+        <div className="bg-card rounded-2xl border border-border p-4 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-3">
+          <div className="flex flex-1 flex-wrap items-center gap-2.5 w-full">
+            {/* Search */}
+            <div className="relative w-full sm:w-64">
               <Search className="absolute right-3.5 top-3 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="بحث باسم المقياس أو الرمز..."
-                className="w-full pl-4 pr-10 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-4 pr-10 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
 
+            {/* Semester Filter */}
             <select
               value={semesterFilter}
               onChange={(e) => setSemesterFilter(e.target.value)}
-              className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
             >
-              <option value="all">كل السداسيات</option>
+              <option value="all">كل السداسيات (S1 & S2)</option>
               <option value="S1">السداسي الأول (S1)</option>
               <option value="S2">السداسي الثاني (S2)</option>
             </select>
 
+            {/* Study Level Filter */}
+            <select
+              value={studyLevelFilter}
+              onChange={(e) => setStudyLevelFilter(e.target.value)}
+              className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">كل المستويات (L1..M2)</option>
+              <option value="L1">سنة أولى ليسانس (L1)</option>
+              <option value="L2">سنة ثانية ليسانس (L2)</option>
+              <option value="L3">سنة ثالثة ليسانس (L3)</option>
+              <option value="M1">سنة أولى ماستر (M1)</option>
+              <option value="M2">سنة ثانية ماستر (M2)</option>
+            </select>
+
+            {/* Specialization Filter */}
+            {specializations.length > 0 && (
+              <select
+                value={specializationFilter}
+                onChange={(e) => setSpecializationFilter(e.target.value)}
+                className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[200px]"
+              >
+                <option value="all">كل التخصصات والشعب</option>
+                {specializations.map((spec) => (
+                  <option key={spec} value={spec}>
+                    {spec}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {/* Session Type Filter */}
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="py-2 px-3 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="all">كل الحصص</option>
-              <option value="lecture">تحتوي محاضرات</option>
+              <option value="lecture">تحتوي محاضرات (Cours)</option>
               <option value="td">تحتوي أعمال موجهة (TD)</option>
               <option value="tp">تحتوي أعمال تطبيقية (TP)</option>
             </select>
 
+            {/* Sort Controls */}
             <div className="flex items-center gap-1.5 border border-input rounded-xl px-2.5 py-1.5 bg-background">
               <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">ترتيب:</span>
@@ -578,13 +681,14 @@ export default function CoursesPage() {
               >
                 <option value="name">الاسم</option>
                 <option value="code">الرمز</option>
+                <option value="semester">السداسي</option>
                 <option value="coefficient">المعامل</option>
                 <option value="credits">الرصيد</option>
               </select>
               <button
                 type="button"
                 onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="text-xs text-muted-foreground hover:text-foreground px-1"
+                className="text-xs text-muted-foreground hover:text-foreground px-1 font-bold"
                 title="عكس اتجاه الترتيب"
               >
                 {sortOrder === 'asc' ? '↑' : '↓'}
@@ -592,9 +696,9 @@ export default function CoursesPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-muted-foreground whitespace-nowrap">
+          <div className="text-xs text-muted-foreground whitespace-nowrap self-end lg:self-center">
             <span>
-              المطابق للبحث: <strong className="text-blue-600 dark:text-blue-400 font-semibold">{filteredCourses.length}</strong>
+              النتائج المطابقة: <strong className="text-indigo-600 dark:text-indigo-400 font-bold">{filteredCourses.length}</strong> مقياس
             </span>
           </div>
         </div>
@@ -607,88 +711,101 @@ export default function CoursesPage() {
             <table className="w-full text-sm text-right">
               <thead className="bg-muted/50 text-muted-foreground text-xs border-b border-border">
                 <tr>
-                  <th className="py-3.5 px-4 font-semibold">#</th>
-                  <th className="py-3.5 px-4 font-semibold">المقياس / المادة</th>
-                  <th className="py-3.5 px-4 font-semibold">الرمز</th>
+                  <th className="py-3.5 px-4 font-semibold w-12 text-center">#</th>
+                  <th className="py-3.5 px-4 font-semibold">المقياس التدريسي والرمز</th>
                   <th className="py-3.5 px-4 font-semibold">السداسي</th>
-                  <th className="py-3.5 px-4 font-semibold">المعامل</th>
-                  <th className="py-3.5 px-4 font-semibold">الرصيد</th>
+                  <th className="py-3.5 px-4 font-semibold">المستوى والتخصص</th>
+                  <th className="py-3.5 px-4 font-semibold">المعامل والرصيد</th>
                   <th className="py-3.5 px-4 font-semibold">أنواع الحصص</th>
-                  <th className="py-3.5 px-4 font-semibold">الإصدار (OCC)</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">الإجراءات</th>
+                  <th className="py-3.5 px-4 font-semibold text-center w-28">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-muted-foreground">
-                      <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-blue-500" />
-                      جارٍ جلب المقاييس من قاعدة البيانات الآمنة...
+                    <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                      <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-indigo-500" />
+                      جارٍ جلب وتحديث دليل المقاييس من السيرفر الآمن...
                     </td>
                   </tr>
                 ) : filteredCourses.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-16 text-center text-muted-foreground">
                       <BookOpen className="h-10 w-10 mx-auto mb-2 text-muted-foreground/40" />
-                      لا توجد مقاييس مطابقة لمعايير البحث والتصفية.
+                      لا توجد مقاييس مطابقة لمعايير البحث والتصفية المختارة.
                     </td>
                   </tr>
                 ) : (
                   filteredCourses.map((course) => {
                     const meta = parseCourseMeta(course);
+                    const isS1 = meta.semester === 'S1';
                     return (
                       <tr key={course.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground">{course.id}</td>
-                        <td className="py-3.5 px-4 font-semibold text-foreground">
-                          {course.name}
+                        <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground text-center">
+                          {course.id}
                         </td>
                         <td className="py-3.5 px-4">
-                          {course.code ? (
-                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-muted text-foreground border border-border">
-                              {course.code}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">—</span>
-                          )}
+                          <div className="font-bold text-foreground text-base">
+                            {course.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 font-mono">
+                            {course.code ? (
+                              <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-foreground border border-border">
+                                {course.code}
+                              </span>
+                            ) : null}
+                            <span>v{course.version || 1}</span>
+                          </div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200">
-                            {meta.semester}
+                          <span
+                            className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                              isS1
+                                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200'
+                                : 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border-purple-200'
+                            }`}
+                          >
+                            {isS1 ? 'السداسي 1 (S1)' : 'السداسي 2 (S2)'}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-foreground">
-                          {meta.coefficient}
-                        </td>
-                        <td className="py-3.5 px-4 text-muted-foreground">
-                          {meta.credits} ECTS
+                        <td className="py-3.5 px-4">
+                          <div className="font-medium text-foreground text-xs">
+                            {meta.study_level ? <span className="bg-muted px-1.5 py-0.5 rounded ml-1 font-semibold">{meta.study_level}</span> : null}
+                            {meta.specialization || course.department_name || 'جذع مشترك'}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1">
+                          <div className="text-xs font-semibold text-foreground">
+                            المعامل: <span className="font-bold text-indigo-600">{meta.coefficient}</span> | الرصيد: <span className="font-bold text-indigo-600">{meta.credits}</span> ECTS
+                          </div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
+                            {meta.weekly_hours} ساعة أسبوعياً
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             {meta.session_types.includes('lecture') && (
-                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium">
+                              <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 font-medium">
                                 محاضرة
                               </span>
                             )}
                             {meta.session_types.includes('td') && (
-                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 font-medium">
+                              <span className="px-2 py-0.5 rounded text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 font-medium">
                                 TD
                               </span>
                             )}
                             {meta.session_types.includes('tp') && (
-                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 font-medium">
-                                TP
+                              <span className="px-2 py-0.5 rounded text-[11px] bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 font-medium">
+                                TP مخبر
                               </span>
                             )}
                           </div>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground">
-                          v{course.version || 1}
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <div className="inline-flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleOpenEdit(course)}
-                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
                               title="تعديل بيانات المقياس"
                             >
                               <Edit className="h-3.5 w-3.5" />
@@ -697,7 +814,7 @@ export default function CoursesPage() {
 
                             <button
                               onClick={() => handleOpenDelete(course)}
-                              className="inline-flex items-center gap-1 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+                              className="inline-flex items-center gap-1 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
                               title="حذف مع تقييم الأثر المتبادل"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -716,10 +833,10 @@ export default function CoursesPage() {
       ) : (
         /* Archived Tab Content */
         <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-          <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border-b border-border flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs">
+          <div className="p-4 bg-rose-50/50 dark:bg-rose-950/20 border-b border-border flex items-center gap-2 text-rose-700 dark:text-rose-300 text-xs font-medium">
             <Archive className="h-4 w-4 shrink-0" />
             <span>
-              سلة المؤرشفات تحتوي على المقاييس المحذوفة بأمان (Soft Deleted). يمكنك استعادتها فوراً بنقرة واحدة مع كامل تفاصيلها.
+              سلة المؤرشفات تحتوي على المقاييس المحذوفة بأمان (Soft Deleted). يمكنك استعادتها فوراً بنقرة واحدة مع كامل تفاصيلها البيداغوجية.
             </span>
           </div>
 
@@ -727,25 +844,25 @@ export default function CoursesPage() {
             <table className="w-full text-sm text-right">
               <thead className="bg-muted/50 text-muted-foreground text-xs border-b border-border">
                 <tr>
-                  <th className="py-3.5 px-4 font-semibold">#</th>
+                  <th className="py-3.5 px-4 font-semibold w-12 text-center">#</th>
                   <th className="py-3.5 px-4 font-semibold">اسم المقياس</th>
                   <th className="py-3.5 px-4 font-semibold">الرمز</th>
                   <th className="py-3.5 px-4 font-semibold">تاريخ الأرشفة</th>
-                  <th className="py-3.5 px-4 font-semibold text-center">استعادة</th>
+                  <th className="py-3.5 px-4 font-semibold text-center w-36">استعادة</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {archivedCourses.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-16 text-center text-muted-foreground">
-                      <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-muted-foreground/40 text-emerald-500" />
+                      <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-emerald-500" />
                       سلة المؤرشفات فارغة تماماً.
                     </td>
                   </tr>
                 ) : (
                   archivedCourses.map((course) => (
                     <tr key={course.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground">{course.id}</td>
+                      <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground text-center">{course.id}</td>
                       <td className="py-3.5 px-4 font-semibold text-foreground">{course.name}</td>
                       <td className="py-3.5 px-4 font-mono text-xs text-muted-foreground">{course.code || '—'}</td>
                       <td className="py-3.5 px-4 text-xs font-mono text-muted-foreground">
@@ -768,6 +885,16 @@ export default function CoursesPage() {
           </div>
         </div>
       )}
+
+      {/* Excel Import Modal */}
+      <ImportCoursesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={(msg) => {
+          alert('✅ ' + msg);
+          loadCourses();
+        }}
+      />
 
       {/* Delete Impact Modal */}
       <DeleteImpactModal
@@ -792,176 +919,268 @@ export default function CoursesPage() {
 
       {/* Add / Edit Course Modal */}
       <Dialog open={showFormModal} onClose={() => setShowFormModal(false)} size="md">
-        <div className="p-6 space-y-4 max-w-lg w-full bg-card rounded-2xl text-right max-h-[85vh] overflow-y-auto">
-          <div className="flex items-center justify-between border-b border-border pb-3">
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-              <BookOpen className="h-5 w-5" />
-              <DialogTitle className="text-lg font-bold text-foreground">
-                {editingCourse ? 'تعديل بيانات المقياس' : 'إضافة مقياس جديد'}
-              </DialogTitle>
-            </div>
-            {editingCourse && (
-              <Badge variant="outline" className="text-xs font-mono">
-                v{editingCourse.version || 1}
-              </Badge>
-            )}
-          </div>
-
-          <DialogDescription className="text-xs text-muted-foreground">
-            حدد اسم المقياس، الرمز، المعامل والرصيد ونوع الحصص التي يتطلبها المقياس.
-          </DialogDescription>
-
-          {conflictError && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              <p>{conflictError}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSaveCourse} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1">
-                اسم المقياس <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="مثال: الخوارزميات وهياكل البيانات..."
-                className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-foreground mb-1">
-                رمز المقياس (Code)
-              </label>
-              <input
-                type="text"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                placeholder="مثال: INF101, ALG2..."
-                className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  السداسي
-                </label>
-                <select
-                  value={formData.semester}
-                  onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="S1">السداسي 1</option>
-                  <option value="S2">السداسي 2</option>
-                  <option value="S3">السداسي 3</option>
-                  <option value="S4">السداسي 4</option>
-                  <option value="S5">السداسي 5</option>
-                  <option value="S6">السداسي 6</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  المعامل
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  required
-                  value={formData.coefficient}
-                  onChange={(e) => setFormData({ ...formData, coefficient: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
-                  الرصيد (ECTS)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="30"
-                  required
-                  value={formData.credits}
-                  onChange={(e) => setFormData({ ...formData, credits: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="border border-border rounded-xl p-3 bg-muted/20">
-              <label className="block text-xs font-semibold text-foreground mb-2">
-                أنواع الحصص المقررة في المقياس:
-              </label>
-              <div className="flex items-center gap-4 text-xs">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.hasLecture}
-                    onChange={(e) => setFormData({ ...formData, hasLecture: e.target.checked })}
-                    className="rounded border-input text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>محاضرة (Cours)</span>
-                </label>
-
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.hasTD}
-                    onChange={(e) => setFormData({ ...formData, hasTD: e.target.checked })}
-                    className="rounded border-input text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>أعمال موجهة (TD)</span>
-                </label>
-
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.hasTP}
-                    onChange={(e) => setFormData({ ...formData, hasTP: e.target.checked })}
-                    className="rounded border-input text-blue-600 focus:ring-blue-500"
-                  />
-                  <span>أعمال تطبيقية (TP)</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowFormModal(false)}
-                className="rounded-xl"
-              >
-                إلغاء
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-                className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
-              >
-                {isSubmitting ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>جارٍ الحفظ...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    <span>{editingCourse ? 'تحديث البيانات' : 'حفظ المقياس'}</span>
-                  </>
+        {showFormModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-card rounded-2xl shadow-2xl border border-border w-full max-w-xl max-h-[90vh] overflow-y-auto p-6 text-right space-y-4">
+              <div className="flex items-center justify-between border-b border-border pb-3">
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                  <BookOpen className="h-5 w-5" />
+                  <DialogTitle className="text-lg font-bold text-foreground">
+                    {editingCourse ? 'تعديل بيانات المقياس التدريسي' : 'إضافة مقياس بيداغوجي جديد'}
+                  </DialogTitle>
+                </div>
+                {editingCourse && (
+                  <Badge variant="outline" className="text-xs font-mono">
+                    v{editingCourse.version || 1}
+                  </Badge>
                 )}
-              </Button>
+              </div>
+
+              <DialogDescription className="text-xs text-muted-foreground">
+                اربط المقياس بالسداسي المناسب، وحدد المستوى والتخصص، المعامل والرصيد وفق دفتر الشروط البيداغوجي.
+              </DialogDescription>
+
+              {conflictError && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>{conflictError}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleSaveCourse} className="space-y-4">
+                {/* Course Name & Code */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      اسم المقياس <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="مثال: الخوارزميات وهياكل البيانات 1..."
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      رمز المقياس (Code)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      placeholder="مثال: INF101"
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Semester & Study Level */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      السداسي البيداغوجي <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, semester: 'S1' })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                          formData.semester === 'S1'
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 ring-2 ring-blue-500/20'
+                            : 'border-input hover:bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        السداسي الأول (S1)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, semester: 'S2' })}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center ${
+                          formData.semester === 'S2'
+                            ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 ring-2 ring-purple-500/20'
+                            : 'border-input hover:bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        السداسي الثاني (S2)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      الطور والمستوى الدراسي
+                    </label>
+                    <select
+                      value={formData.studyLevel}
+                      onChange={(e) => setFormData({ ...formData, studyLevel: e.target.value })}
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="L1">سنة أولى ليسانس (L1)</option>
+                      <option value="L2">سنة ثانية ليسانس (L2)</option>
+                      <option value="L3">سنة ثالثة ليسانس (L3)</option>
+                      <option value="M1">سنة أولى ماستر (M1)</option>
+                      <option value="M2">سنة ثانية ماستر (M2)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Specialization & Department */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      التخصص / الشعبة
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.specialization}
+                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                      placeholder="مثال: إعلام آلي، هندسة برمجيات..."
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      القسم الأكاديمي
+                    </label>
+                    <select
+                      value={formData.departmentId}
+                      onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">بدون قسم / قسم عام</option>
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Credits, Coefficient, Weekly Hours */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      المعامل (Coefficient)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      required
+                      value={formData.coefficient}
+                      onChange={(e) => setFormData({ ...formData, coefficient: Number(e.target.value) || 1 })}
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      الرصيد (ECTS Credits)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      required
+                      value={formData.credits}
+                      onChange={(e) => setFormData({ ...formData, credits: Number(e.target.value) || 1 })}
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">
+                      الحجم الساعي الأسبوعي
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="1"
+                      max="20"
+                      required
+                      value={formData.weeklyHours}
+                      onChange={(e) => setFormData({ ...formData, weeklyHours: Number(e.target.value) || 3 })}
+                      className="w-full px-3 py-2 border border-input rounded-xl text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Session Types Selection */}
+                <div className="border border-border rounded-xl p-3.5 bg-muted/20">
+                  <label className="block text-xs font-semibold text-foreground mb-2">
+                    أنواع الحصص المقررة في المقياس:
+                  </label>
+                  <div className="flex items-center gap-5 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasLecture}
+                        onChange={(e) => setFormData({ ...formData, hasLecture: e.target.checked })}
+                        className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      />
+                      <span className="font-medium">محاضرة (Cours)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasTD}
+                        onChange={(e) => setFormData({ ...formData, hasTD: e.target.checked })}
+                        className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      />
+                      <span className="font-medium">أعمال موجهة (TD)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.hasTP}
+                        onChange={(e) => setFormData({ ...formData, hasTP: e.target.checked })}
+                        className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                      />
+                      <span className="font-medium">أعمال تطبيقية (TP مخبر)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowFormModal(false)}
+                    className="rounded-xl"
+                  >
+                    إلغاء
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-semibold"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>جارٍ الحفظ...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        <span>{editingCourse ? 'تحديث بيانات المقياس' : 'حفظ المقياس في الدليل'}</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
             </div>
-          </form>
-        </div>
+          </div>
+        )}
       </Dialog>
     </div>
   );

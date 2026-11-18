@@ -36,6 +36,16 @@ const createCourseSchema = z.object({
   name: z.string({ required_error: 'اسم المقياس مطلوب' }).trim().min(1, 'اسم المقياس مطلوب').max(150),
   code: z.string().trim().max(50).optional().nullable(),
   department_id: z.coerce.number().int().optional().nullable(),
+  specialization_id: z.coerce.number().int().optional().nullable(),
+  specialization_ids: z.array(z.coerce.number().int()).optional(),
+  semester: z.string().trim().max(10).optional().default('S1'),
+  credits: z.coerce.number().int().min(1).max(30).optional().default(3),
+  coefficient: z.coerce.number().int().min(1).max(10).optional().default(2),
+  has_lecture: z.boolean().optional().default(true),
+  has_td: z.boolean().optional().default(true),
+  has_tp: z.boolean().optional().default(false),
+  study_level: z.string().trim().max(50).optional().default('L1'),
+  weekly_hours: z.coerce.number().min(0).max(50).optional().default(3),
   metadata: z.union([z.string(), z.record(z.any())]).optional()
 });
 
@@ -43,8 +53,24 @@ const updateCourseSchema = z.object({
   name: z.string().trim().min(1).max(150).optional(),
   code: z.string().trim().max(50).optional().nullable(),
   department_id: z.coerce.number().int().optional().nullable(),
+  specialization_id: z.coerce.number().int().optional().nullable(),
+  specialization_ids: z.array(z.coerce.number().int()).optional(),
+  semester: z.string().trim().max(10).optional(),
+  credits: z.coerce.number().int().min(1).max(30).optional(),
+  coefficient: z.coerce.number().int().min(1).max(10).optional(),
+  has_lecture: z.boolean().optional(),
+  has_td: z.boolean().optional(),
+  has_tp: z.boolean().optional(),
+  study_level: z.string().trim().max(50).optional(),
+  weekly_hours: z.coerce.number().min(0).max(50).optional(),
   metadata: z.union([z.string(), z.record(z.any())]).optional(),
   version: z.coerce.number().int().optional()
+});
+
+const bulkImportCoursesSchema = z.object({
+  courses: z.array(createCourseSchema),
+  skipErrors: z.boolean().optional().default(true),
+  replace_existing: z.boolean().optional().default(false)
 });
 
 const createGroupSchema = z.object({
@@ -249,6 +275,7 @@ module.exports = {
   updateRoomSchema,
   createCourseSchema,
   updateCourseSchema,
+  bulkImportCoursesSchema,
   createGroupSchema,
   updateGroupSchema,
   createProfessorSchema,

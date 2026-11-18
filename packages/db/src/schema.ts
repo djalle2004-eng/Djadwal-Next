@@ -6,6 +6,7 @@ import {
   timestamp,
   boolean,
   varchar,
+  numeric,
   index,
   uniqueIndex
 } from 'drizzle-orm/pg-core';
@@ -44,6 +45,15 @@ export const courses = pgTable('courses', {
   code: text('code'),
   metadata: text('metadata').default('{}'),
   department_id: integer('department_id').references(() => departments.id),
+  semester: varchar('semester', { length: 10 }).default('S1'),
+  specialization_id: integer('specialization_id'),
+  credits: integer('credits').default(3),
+  coefficient: integer('coefficient').default(2),
+  has_lecture: boolean('has_lecture').default(true),
+  has_td: boolean('has_td').default(true),
+  has_tp: boolean('has_tp').default(false),
+  study_level: varchar('study_level', { length: 50 }).default('L1'),
+  weekly_hours: numeric('weekly_hours', { precision: 4, scale: 2 }).default('3.00'),
   version: integer('version').default(1).notNull(),
   deleted_at: timestamp('deleted_at'),
   created_at: timestamp('created_at').defaultNow()
@@ -487,6 +497,21 @@ export const professorAcademicProfiles = pgTable('professor_academic_profiles', 
   profYearIdx: uniqueIndex('idx_prof_academic_year').on(table.professor_id, table.academic_year),
   rankIdx: index('idx_prof_profiles_rank').on(table.academic_rank),
   tempIdx: index('idx_prof_profiles_temp').on(table.is_temporary)
+}));
+
+// 34. Course Specializations (P16 Curriculum Mapping & Shared Modules)
+export const courseSpecializations = pgTable('course_specializations', {
+  id: serial('id').primaryKey(),
+  course_id: integer('course_id').references(() => courses.id, { onDelete: 'cascade' }).notNull(),
+  specialization_id: integer('specialization_id').references(() => specializations.id, { onDelete: 'cascade' }).notNull(),
+  semester: varchar('semester', { length: 10 }).default('S1'),
+  academic_year_id: integer('academic_year_id').references(() => academicYears.id),
+  is_core: boolean('is_core').default(false),
+  created_at: timestamp('created_at').defaultNow().notNull()
+}, (table) => ({
+  specSemIdx: uniqueIndex('idx_course_spec_sem').on(table.course_id, table.specialization_id, table.semester),
+  courseIdx: index('idx_course_spec_course').on(table.course_id),
+  specIdx: index('idx_course_spec_specialization').on(table.specialization_id),
 }));
 
 
