@@ -1091,6 +1091,41 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
     setPrintModalOpen(true);
   };
 
+  // Direct Student Announcement Print Trigger for a specific scheduled session
+  const handlePrintDirectSessionAnnouncement = (session: GroupedExtraSession | ExtraSession) => {
+    // 1. Resolve department and specialization from the session's group(s)
+    const grpId = session.group_id || ('group_ids' in session && session.group_ids?.[0] ? session.group_ids[0] : null);
+    const grp = grpId ? groups.find(g => g.id === grpId) : null;
+
+    if (grp?.department_id) {
+      setAnnouncementDepartment(grp.department_id);
+    } else {
+      setAnnouncementDepartment('');
+    }
+
+    if (grp) {
+      const spec = specializations.find(sp => sp.name === grp.specialization || (grp.parent_group_id && sp.id === grp.parent_group_id));
+      setAnnouncementSpecialization(spec ? spec.id : '');
+    } else {
+      setAnnouncementSpecialization('');
+    }
+
+    // 2. Set group, professor, and session type
+    const isSingleGroup = !('group_ids' in session) || session.group_ids.length <= 1;
+    setAnnouncementGroup(isSingleGroup && grpId ? grpId : '');
+    setAnnouncementProfessor(session.professor_id || '');
+    setAnnouncementSessionType(session.session_type || 'all');
+
+    // 3. Set the announcement list strictly to this session's items
+    const sessionIds = 'ids' in session && session.ids?.length > 0 ? session.ids : [session.id];
+    const targetItems = extraSessions.filter(s => sessionIds.includes(s.id));
+    setAnnouncementFilteredList(targetItems.length > 0 ? targetItems : [session as ExtraSession]);
+
+    // 4. Open the student announcement modal directly
+    setPrintModalType('announcement');
+    setPrintModalOpen(true);
+  };
+
   // Sessions List by Type Print Trigger
   const handlePrintSessionsList = (type: string = 'all') => {
     setDateRangeType(type);
@@ -2280,12 +2315,33 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
                               {session.room_name || 'قاعة'}
                             </td>
                             <td className="py-3.5 px-4 text-center">
-                              <div className="flex items-center justify-center gap-2">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {/* Print Student Announcement (Direct) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintDirectSessionAnnouncement(session)}
+                                  className="p-1.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 rounded-lg transition-colors border border-emerald-300 dark:border-emerald-800 shadow-sm flex items-center gap-1 font-semibold text-xs"
+                                  title="طباعة إعلان الطلبة المباشر لهذه الحصة 📝"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  <span className="hidden xl:inline text-[11px]">إعلان الطلبة</span>
+                                </button>
+
+                                {/* Print Individual Certificate for Professor */}
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintCertificate(session)}
+                                  className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
+                                  title="طباعة شهادة الحصة الفردية للأستاذ"
+                                >
+                                  <Printer className="h-4 w-4" />
+                                </button>
+
                                 {/* Edit */}
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(session)}
-                                  className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
+                                  className="p-1.5 text-slate-500 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
                                   title="تعديل الحصة"
                                 >
                                   <Pencil className="h-4 w-4" />
@@ -2298,20 +2354,10 @@ export function AvailableRoomsContent({ initialTab = 'search' }: { initialTab?: 
                                     setSessionToDelete(session);
                                     setDeleteDialogOpen(true);
                                   }}
-                                  className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors"
                                   title="إلغاء وحذف الحصة"
                                 >
                                   <Trash2 className="h-4 w-4" />
-                                </button>
-
-                                {/* Print Individual Certificate */}
-                                <button
-                                  type="button"
-                                  onClick={() => handlePrintCertificate(session)}
-                                  className="p-1.5 text-sky-600 hover:text-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition-colors"
-                                  title="طباعة شهادة الحصة الفردية للأستاذ"
-                                >
-                                  <Printer className="h-4 w-4" />
                                 </button>
                               </div>
                             </td>
