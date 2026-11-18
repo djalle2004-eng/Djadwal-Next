@@ -22,6 +22,9 @@ export interface ExcelCourseInputRow {
   has_td?: boolean | string | number | null;
   has_tp?: boolean | string | number | null;
   weekly_hours?: number | string | null;
+  lecture_hours?: number | string | null;
+  td_hours?: number | string | null;
+  tp_hours?: number | string | null;
 }
 
 export interface FieldChange {
@@ -48,6 +51,9 @@ export interface AnalyzedCourseRow {
   has_td: boolean;
   has_tp: boolean;
   weekly_hours: number;
+  lecture_hours: number;
+  td_hours: number;
+  tp_hours: number;
   action: 'create' | 'update' | 'unchanged' | 'error';
   errorMessageAr?: string;
   changes?: FieldChange[];
@@ -170,6 +176,24 @@ const HEADER_MAP: Record<string, string> = {
   'الساعات الأسبوعية': 'weekly_hours',
   'weekly_hours': 'weekly_hours',
   'hours': 'weekly_hours',
+
+  // Lecture Hours
+  'ساعات المحاضرة': 'lecture_hours',
+  'ساعات المحاضرات': 'lecture_hours',
+  'حجم المحاضرة': 'lecture_hours',
+  'lecture_hours': 'lecture_hours',
+
+  // TD Hours
+  'ساعات الأعمال الموجهة': 'td_hours',
+  'ساعات اعمال موجهة': 'td_hours',
+  'ساعات td': 'td_hours',
+  'td_hours': 'td_hours',
+
+  // TP Hours
+  'ساعات الأعمال التطبيقية': 'tp_hours',
+  'ساعات اعمال تطبيقية': 'tp_hours',
+  'ساعات tp': 'tp_hours',
+  'tp_hours': 'tp_hours',
 };
 
 /**
@@ -312,6 +336,9 @@ export function dryRunCoursesImport(
         has_td: true,
         has_tp: false,
         weekly_hours: 3.0,
+        lecture_hours: 1.5,
+        td_hours: 1.5,
+        tp_hours: 0.0,
         action: 'error',
         errorMessageAr: 'اسم المقياس حقل إجباري مفقود في هذا الصف.',
       });
@@ -326,7 +353,25 @@ export function dryRunCoursesImport(
     const hasLecture = parseBooleanFlag(row.has_lecture, true);
     const hasTD = parseBooleanFlag(row.has_td, true);
     const hasTP = parseBooleanFlag(row.has_tp, false);
-    const weeklyHours = Number(row.weekly_hours) > 0 ? Number(row.weekly_hours) : 3.0;
+
+    const parseHours = (v: any) => {
+      const n = Number(v);
+      return !isNaN(n) && n >= 0 ? n : null;
+    };
+    const rowLectureHours = parseHours(row.lecture_hours);
+    const rowTdHours = parseHours(row.td_hours);
+    const rowTpHours = parseHours(row.tp_hours);
+
+    const lectureHours = rowLectureHours !== null ? rowLectureHours : (hasLecture ? 1.5 : 0.0);
+    const tdHours = rowTdHours !== null ? rowTdHours : (hasTD ? 1.5 : 0.0);
+    const tpHours = rowTpHours !== null ? rowTpHours : (hasTP ? 1.5 : 0.0);
+
+    let weeklyHours = Number(row.weekly_hours) > 0
+      ? Number(row.weekly_hours)
+      : Number((lectureHours + tdHours + tpHours).toFixed(2));
+    if (weeklyHours <= 0) {
+      weeklyHours = 3.0;
+    }
 
     const deptStr = (row.department || '').toString().trim() || null;
     const specStr = (row.specialization || '').toString().trim() || null;
@@ -369,6 +414,9 @@ export function dryRunCoursesImport(
         has_td: hasTD,
         has_tp: hasTP,
         weekly_hours: weeklyHours,
+        lecture_hours: lectureHours,
+        td_hours: tdHours,
+        tp_hours: tpHours,
         action: 'create',
       });
     } else {
@@ -488,6 +536,47 @@ export function dryRunCoursesImport(
         });
       }
 
+      const oldWeeklyHours = Number(matchedCourse.weekly_hours ?? existingMeta.weekly_hours ?? 3.0);
+      const oldLectureHours = Number(matchedCourse.lecture_hours ?? existingMeta.lecture_hours ?? (oldHasLecture ? 1.5 : 0.0));
+      const oldTdHours = Number(matchedCourse.td_hours ?? existingMeta.td_hours ?? (oldHasTD ? 1.5 : 0.0));
+      const oldTpHours = Number(matchedCourse.tp_hours ?? existingMeta.tp_hours ?? (oldHasTP ? 1.5 : 0.0));
+
+      if (Math.abs(oldLectureHours - lectureHours) > 0.01) {
+        changes.push({
+          field: 'lecture_hours',
+          fieldLabelAr: 'ساعات المحاضرة',
+          oldValue: `${oldLectureHours}س`,
+          newValue: `${lectureHours}س`,
+        });
+      }
+
+      if (Math.abs(oldTdHours - tdHours) > 0.01) {
+        changes.push({
+          field: 'td_hours',
+          fieldLabelAr: 'ساعات الأعمال الموجهة (TD)',
+          oldValue: `${oldTdHours}س`,
+          newValue: `${tdHours}س`,
+        });
+      }
+
+      if (Math.abs(oldTpHours - tpHours) > 0.01) {
+        changes.push({
+          field: 'tp_hours',
+          fieldLabelAr: 'ساعات الأعمال التطبيقية (TP)',
+          oldValue: `${oldTpHours}س`,
+          newValue: `${tpHours}س`,
+        });
+      }
+
+      if (Math.abs(oldWeeklyHours - weeklyHours) > 0.01) {
+        changes.push({
+          field: 'weekly_hours',
+          fieldLabelAr: 'الحجم الساعي الأسبوعي',
+          oldValue: `${oldWeeklyHours}س`,
+          newValue: `${weeklyHours}س`,
+        });
+      }
+
       if (changes.length > 0) {
         toUpdateCount++;
         analyzedRows.push({
@@ -507,6 +596,9 @@ export function dryRunCoursesImport(
           has_td: hasTD,
           has_tp: hasTP,
           weekly_hours: weeklyHours,
+          lecture_hours: lectureHours,
+          td_hours: tdHours,
+          tp_hours: tpHours,
           action: 'update',
           changes,
           existingCourse: matchedCourse,
@@ -530,6 +622,9 @@ export function dryRunCoursesImport(
           has_td: hasTD,
           has_tp: hasTP,
           weekly_hours: weeklyHours,
+          lecture_hours: lectureHours,
+          td_hours: tdHours,
+          tp_hours: tpHours,
           action: 'unchanged',
           existingCourse: matchedCourse,
         });
@@ -575,6 +670,11 @@ export function buildCoursesExportWorkbook(courses: any[] = []): XLSX.WorkBook {
     const hasTD = c.has_td !== undefined ? Boolean(c.has_td) : sessionTypes.includes('td');
     const hasTP = c.has_tp !== undefined ? Boolean(c.has_tp) : sessionTypes.includes('tp');
 
+    const lectureHours = Number(c.lecture_hours ?? meta.lecture_hours ?? (hasLecture ? 1.5 : 0.0));
+    const tdHours = Number(c.td_hours ?? meta.td_hours ?? (hasTD ? 1.5 : 0.0));
+    const tpHours = Number(c.tp_hours ?? meta.tp_hours ?? (hasTP ? 1.5 : 0.0));
+    const weeklyHours = Number(c.weekly_hours ?? meta.weekly_hours ?? (lectureHours + tdHours + tpHours));
+
     return {
       'المعرف': c.id ?? (idx + 1),
       'اسم المقياس': c.name || '',
@@ -588,7 +688,10 @@ export function buildCoursesExportWorkbook(courses: any[] = []): XLSX.WorkBook {
       'محاضرة': hasLecture ? 'نعم' : 'لا',
       'أعمال موجهة TD': hasTD ? 'نعم' : 'لا',
       'أعمال تطبيقية TP': hasTP ? 'نعم' : 'لا',
-      'الحجم الساعي الأسبوعي': Number(c.weekly_hours ?? meta.weekly_hours ?? 3.0),
+      'ساعات المحاضرة': lectureHours,
+      'ساعات TD': tdHours,
+      'ساعات TP': tpHours,
+      'الحجم الساعي الأسبوعي': weeklyHours,
       'الحالة': c.deleted_at ? 'مؤرشف' : 'نشط',
     };
   });
@@ -605,10 +708,13 @@ export function buildCoursesExportWorkbook(courses: any[] = []): XLSX.WorkBook {
     { wch: 22 }, // القسم
     { wch: 10 }, // المعامل
     { wch: 10 }, // الرصيد
-    { wch: 12 }, // محاضرة
-    { wch: 16 }, // TD
-    { wch: 16 }, // TP
-    { wch: 20 }, // الحجم الساعي
+    { wch: 10 }, // محاضرة
+    { wch: 14 }, // TD
+    { wch: 14 }, // TP
+    { wch: 14 }, // ساعات المحاضرة
+    { wch: 12 }, // ساعات TD
+    { wch: 12 }, // ساعات TP
+    { wch: 20 }, // الحجم الساعي الإجمالي
     { wch: 12 }, // الحالة
   ];
 
@@ -631,6 +737,11 @@ export function buildCoursesExportWorkbook(courses: any[] = []): XLSX.WorkBook {
       'العنصر البيداغوجي': 'نوع الحصص (Lecture, TD, TP)',
       'القيم المقبولة': 'نعم / لا (أو 1 / 0)',
       'الأهمية في النظام': 'تحديد ما إذا كان المقياس يتطلب محاضرات، أعمالاً موجهة، أو أعمالاً تطبيقية في مخابر متخصصة.',
+    },
+    {
+      'العنصر البيداغوجي': 'ساعات المحاضرة و TD و TP',
+      'القيم المقبولة': 'أرقام عشرية (مثلاً: 1.5 أو 1.0 أو 2.0 أو 3.0)',
+      'الأهمية في النظام': 'تعتمد مباشرة في مصفوفة الجداول الآلية لتحديد مدة الحصة ومطابقة القاعات والأساتذة بدون أخطاء.',
     },
     {
       'العنصر البيداغوجي': 'التخصص والقسم',
@@ -669,6 +780,9 @@ export function buildCoursesTemplateWorkbook(): XLSX.WorkBook {
       has_lecture: true,
       has_td: true,
       has_tp: true,
+      lecture_hours: 1.5,
+      td_hours: 1.5,
+      tp_hours: 1.5,
       weekly_hours: 4.5,
     },
     {
@@ -684,6 +798,9 @@ export function buildCoursesTemplateWorkbook(): XLSX.WorkBook {
       has_lecture: true,
       has_td: true,
       has_tp: false,
+      lecture_hours: 1.5,
+      td_hours: 1.5,
+      tp_hours: 0.0,
       weekly_hours: 3.0,
     },
     {
@@ -699,6 +816,9 @@ export function buildCoursesTemplateWorkbook(): XLSX.WorkBook {
       has_lecture: true,
       has_td: true,
       has_tp: true,
+      lecture_hours: 1.5,
+      td_hours: 1.5,
+      tp_hours: 1.5,
       weekly_hours: 4.5,
     },
   ];

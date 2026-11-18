@@ -57,6 +57,16 @@ function enrichCourseRow(row) {
     ? specialties.join('، ')
     : (meta.specialization || row.specialization_name || '');
 
+  const explicitLecture = meta.lecture_hours !== undefined ? Number(meta.lecture_hours) : (row.lecture_hours !== undefined ? Number(row.lecture_hours) : null);
+  const explicitTD = meta.td_hours !== undefined ? Number(meta.td_hours) : (row.td_hours !== undefined ? Number(row.td_hours) : null);
+  const explicitTP = meta.tp_hours !== undefined ? Number(meta.tp_hours) : (row.tp_hours !== undefined ? Number(row.tp_hours) : null);
+
+  const lectureHours = explicitLecture !== null ? explicitLecture : (hasLecture ? 1.5 : 0);
+  const tdHours = explicitTD !== null ? explicitTD : (hasTD ? 1.5 : 0);
+  const tpHours = explicitTP !== null ? explicitTP : (hasTP ? 1.5 : 0);
+  const calculatedTotal = lectureHours + tdHours + tpHours;
+  const weeklyHours = Number(row.weekly_hours ?? meta.weekly_hours ?? (calculatedTotal > 0 ? calculatedTotal : 3.0));
+
   return {
     ...row,
     semester: row.semester || meta.semester || 'S1',
@@ -71,7 +81,10 @@ function enrichCourseRow(row) {
     has_lecture: hasLecture,
     has_td: hasTD,
     has_tp: hasTP,
-    weekly_hours: Number(row.weekly_hours ?? meta.weekly_hours ?? 3.0),
+    lecture_hours: lectureHours,
+    td_hours: tdHours,
+    tp_hours: tpHours,
+    weekly_hours: weeklyHours,
     session_types: sessionTypes.length > 0 ? sessionTypes : ['lecture', 'td'],
   };
 }
@@ -199,7 +212,10 @@ async function createCourse(req, res) {
       has_td = true,
       has_tp = false,
       study_level = 'L1',
-      weekly_hours = 3.0,
+      weekly_hours,
+      lecture_hours,
+      td_hours,
+      tp_hours,
       metadata
     } = req.body;
 
@@ -213,6 +229,17 @@ async function createCourse(req, res) {
     if (has_lecture) session_types.push('lecture');
     if (has_td) session_types.push('td');
     if (has_tp) session_types.push('tp');
+
+    const explicitLecture = lecture_hours !== undefined ? Number(lecture_hours) : (existingMeta.lecture_hours !== undefined ? Number(existingMeta.lecture_hours) : null);
+    const explicitTD = td_hours !== undefined ? Number(td_hours) : (existingMeta.td_hours !== undefined ? Number(existingMeta.td_hours) : null);
+    const explicitTP = tp_hours !== undefined ? Number(tp_hours) : (existingMeta.tp_hours !== undefined ? Number(existingMeta.tp_hours) : null);
+
+    const effectiveLectureHours = explicitLecture !== null ? explicitLecture : (has_lecture ? 1.5 : 0);
+    const effectiveTDHours = explicitTD !== null ? explicitTD : (has_td ? 1.5 : 0);
+    const effectiveTPHours = explicitTP !== null ? explicitTP : (has_tp ? 1.5 : 0);
+
+    const calculatedTotal = effectiveLectureHours + effectiveTDHours + effectiveTPHours;
+    const effectiveWeekly = weekly_hours !== undefined ? Number(weekly_hours) : (calculatedTotal > 0 ? calculatedTotal : 3.0);
 
     let parsedSpecialties = [];
     if (Array.isArray(specialties)) {
@@ -242,7 +269,10 @@ async function createCourse(req, res) {
       specialization_ids: Array.isArray(specialization_ids)
         ? specialization_ids.map(Number)
         : (specialization_id ? [Number(specialization_id)] : []),
-      weekly_hours: Number(weekly_hours) || 3.0
+      lecture_hours: effectiveLectureHours,
+      td_hours: effectiveTDHours,
+      tp_hours: effectiveTPHours,
+      weekly_hours: effectiveWeekly
     };
 
     const fullPayload = {
@@ -257,7 +287,7 @@ async function createCourse(req, res) {
       has_td: Boolean(has_td),
       has_tp: Boolean(has_tp),
       study_level,
-      weekly_hours: Number(weekly_hours) || 3.0,
+      weekly_hours: effectiveWeekly,
       metadata: JSON.stringify(metaPayload)
     };
 
@@ -316,6 +346,9 @@ async function updateCourse(req, res) {
       has_tp,
       study_level,
       weekly_hours,
+      lecture_hours,
+      td_hours,
+      tp_hours,
       metadata,
       version
     } = req.body;
@@ -337,7 +370,6 @@ async function updateCourse(req, res) {
     const effectiveCredits = credits !== undefined ? Number(credits) : Number(current.credits ?? existingMeta.credits ?? 3);
     const effectiveCoef = coefficient !== undefined ? Number(coefficient) : Number(current.coefficient ?? existingMeta.coefficient ?? 2);
     const effectiveLevel = study_level !== undefined ? study_level : (current.study_level || existingMeta.study_level || 'L1');
-    const effectiveWeekly = weekly_hours !== undefined ? Number(weekly_hours) : Number(current.weekly_hours ?? existingMeta.weekly_hours ?? 3.0);
 
     const session_types = [];
     const isLecture = has_lecture !== undefined ? Boolean(has_lecture) : (current.has_lecture ?? true);
@@ -346,6 +378,19 @@ async function updateCourse(req, res) {
     if (isLecture) session_types.push('lecture');
     if (isTD) session_types.push('td');
     if (isTP) session_types.push('tp');
+
+    const explicitLecture = lecture_hours !== undefined ? Number(lecture_hours) : (existingMeta.lecture_hours !== undefined ? Number(existingMeta.lecture_hours) : null);
+    const explicitTD = td_hours !== undefined ? Number(td_hours) : (existingMeta.td_hours !== undefined ? Number(existingMeta.td_hours) : null);
+    const explicitTP = tp_hours !== undefined ? Number(tp_hours) : (existingMeta.tp_hours !== undefined ? Number(existingMeta.tp_hours) : null);
+
+    const effectiveLectureHours = explicitLecture !== null ? explicitLecture : (isLecture ? 1.5 : 0);
+    const effectiveTDHours = explicitTD !== null ? explicitTD : (isTD ? 1.5 : 0);
+    const effectiveTPHours = explicitTP !== null ? explicitTP : (isTP ? 1.5 : 0);
+
+    const calculatedTotal = effectiveLectureHours + effectiveTDHours + effectiveTPHours;
+    const effectiveWeekly = weekly_hours !== undefined
+      ? Number(weekly_hours)
+      : (calculatedTotal > 0 ? calculatedTotal : Number(current.weekly_hours ?? existingMeta.weekly_hours ?? 3.0));
 
     let parsedSpecialties = undefined;
     if (specialties !== undefined) {
@@ -379,6 +424,9 @@ async function updateCourse(req, res) {
       specialization_ids: Array.isArray(specialization_ids)
         ? specialization_ids.map(Number)
         : (specialization_id ? [Number(specialization_id)] : (existingMeta.specialization_ids || [])),
+      lecture_hours: effectiveLectureHours,
+      td_hours: effectiveTDHours,
+      tp_hours: effectiveTPHours,
       weekly_hours: effectiveWeekly
     };
 
@@ -624,7 +672,6 @@ async function commitCoursesImport(req, res) {
         const hasLecture = item.has_lecture !== false;
         const hasTD = item.has_td !== false;
         const hasTP = Boolean(item.has_tp);
-        const weeklyHours = Number(item.weekly_hours) || 3.0;
         const deptId = item.department_id ? Number(item.department_id) : null;
         const specId = item.specialization_id ? Number(item.specialization_id) : null;
 
@@ -632,6 +679,17 @@ async function commitCoursesImport(req, res) {
         if (hasLecture) session_types.push('lecture');
         if (hasTD) session_types.push('td');
         if (hasTP) session_types.push('tp');
+
+        const explicitLecture = item.lecture_hours !== undefined ? Number(item.lecture_hours) : null;
+        const explicitTD = item.td_hours !== undefined ? Number(item.td_hours) : null;
+        const explicitTP = item.tp_hours !== undefined ? Number(item.tp_hours) : null;
+
+        const effectiveLectureHours = explicitLecture !== null ? explicitLecture : (hasLecture ? 1.5 : 0);
+        const effectiveTDHours = explicitTD !== null ? explicitTD : (hasTD ? 1.5 : 0);
+        const effectiveTPHours = explicitTP !== null ? explicitTP : (hasTP ? 1.5 : 0);
+
+        const calculatedTotal = effectiveLectureHours + effectiveTDHours + effectiveTPHours;
+        const weeklyHours = Number(item.weekly_hours) || (calculatedTotal > 0 ? calculatedTotal : 3.0);
 
         let parsedSpecialties = [];
         if (Array.isArray(item.specialties)) {
@@ -656,6 +714,9 @@ async function commitCoursesImport(req, res) {
           specialties: parsedSpecialties,
           specialization_id: specId,
           specialization_ids: specId ? [specId] : [],
+          lecture_hours: effectiveLectureHours,
+          td_hours: effectiveTDHours,
+          tp_hours: effectiveTPHours,
           weekly_hours: weeklyHours
         };
 

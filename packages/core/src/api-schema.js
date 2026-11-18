@@ -48,6 +48,9 @@ const createCourseSchema = z.object({
   has_tp: z.boolean().optional().default(false),
   study_level: z.string().trim().max(50).optional().default('L1'),
   weekly_hours: z.coerce.number().min(0).max(50).optional().default(3),
+  lecture_hours: z.coerce.number().min(0).max(20).optional(),
+  td_hours: z.coerce.number().min(0).max(20).optional(),
+  tp_hours: z.coerce.number().min(0).max(20).optional(),
   metadata: z.union([z.string(), z.record(z.any())]).optional()
 });
 
@@ -67,6 +70,9 @@ const updateCourseSchema = z.object({
   has_tp: z.boolean().optional(),
   study_level: z.string().trim().max(50).optional(),
   weekly_hours: z.coerce.number().min(0).max(50).optional(),
+  lecture_hours: z.coerce.number().min(0).max(20).optional(),
+  td_hours: z.coerce.number().min(0).max(20).optional(),
+  tp_hours: z.coerce.number().min(0).max(20).optional(),
   metadata: z.union([z.string(), z.record(z.any())]).optional(),
   version: z.coerce.number().int().optional()
 });

@@ -59,6 +59,9 @@ export interface Course {
   has_td?: boolean;
   has_tp?: boolean;
   weekly_hours?: number;
+  lecture_hours?: number;
+  td_hours?: number;
+  tp_hours?: number;
   metadata?: string | Record<string, any>;
   deleted_at?: string | null;
   version?: number;
@@ -73,6 +76,9 @@ interface ParsedCourseMetadata {
   specialization: string;
   specialties: string[];
   weekly_hours: number;
+  lecture_hours: number;
+  td_hours: number;
+  tp_hours: number;
   session_types: string[];
 }
 
@@ -124,6 +130,9 @@ export default function CoursesPage() {
     specialties: [] as string[],
     departmentId: '',
     weeklyHours: 3.0,
+    lectureHours: 1.5,
+    tdHours: 1.5,
+    tpHours: 0.0,
     hasLecture: true,
     hasTD: true,
     hasTP: false,
@@ -169,6 +178,20 @@ export default function CoursesPage() {
       ? specialties.join('، ')
       : (course.specialization || course.specialization_name || meta.specialization || '');
 
+    const explicitLecture = meta.lecture_hours !== undefined ? Number(meta.lecture_hours) : (course.lecture_hours !== undefined ? Number(course.lecture_hours) : null);
+    const explicitTD = meta.td_hours !== undefined ? Number(meta.td_hours) : (course.td_hours !== undefined ? Number(course.td_hours) : null);
+    const explicitTP = meta.tp_hours !== undefined ? Number(meta.tp_hours) : (course.tp_hours !== undefined ? Number(course.tp_hours) : null);
+
+    const hasLecture = course.has_lecture !== false && (sessionTypes.length === 0 || sessionTypes.includes('lecture'));
+    const hasTD = course.has_td !== false && (sessionTypes.length === 0 || sessionTypes.includes('td'));
+    const hasTP = Boolean(course.has_tp) || sessionTypes.includes('tp');
+
+    const lectureHours = explicitLecture !== null ? explicitLecture : (hasLecture ? 1.5 : 0);
+    const tdHours = explicitTD !== null ? explicitTD : (hasTD ? 1.5 : 0);
+    const tpHours = explicitTP !== null ? explicitTP : (hasTP ? 1.5 : 0);
+    const calculatedTotal = lectureHours + tdHours + tpHours;
+    const weeklyHours = Number(course.weekly_hours ?? meta.weekly_hours ?? (calculatedTotal > 0 ? calculatedTotal : 3.0));
+
     return {
       credits: Number(course.credits ?? meta.credits ?? 3),
       coefficient: Number(course.coefficient ?? meta.coefficient ?? 2),
@@ -176,7 +199,10 @@ export default function CoursesPage() {
       study_level: course.study_level || meta.study_level || 'L1',
       specialization: specializationStr,
       specialties,
-      weekly_hours: Number(course.weekly_hours ?? meta.weekly_hours ?? 3.0),
+      weekly_hours: weeklyHours,
+      lecture_hours: lectureHours,
+      td_hours: tdHours,
+      tp_hours: tpHours,
       session_types: sessionTypes.length > 0 ? sessionTypes : ['lecture', 'td'],
     };
   };
@@ -308,6 +334,9 @@ export default function CoursesPage() {
       specialties: [],
       departmentId: '',
       weeklyHours: 3.0,
+      lectureHours: 1.5,
+      tdHours: 1.5,
+      tpHours: 0.0,
       hasLecture: true,
       hasTD: true,
       hasTP: false,
@@ -331,6 +360,9 @@ export default function CoursesPage() {
       specialties: meta.specialties || [],
       departmentId: course.department_id ? String(course.department_id) : '',
       weeklyHours: meta.weekly_hours,
+      lectureHours: meta.lecture_hours,
+      tdHours: meta.td_hours,
+      tpHours: meta.tp_hours,
       hasLecture: meta.session_types.includes('lecture'),
       hasTD: meta.session_types.includes('td'),
       hasTP: meta.session_types.includes('tp'),
@@ -361,6 +393,11 @@ export default function CoursesPage() {
       ? payloadSpecialties.join('، ')
       : formData.specialization.trim();
 
+    const calculatedWeekly = (formData.hasLecture ? formData.lectureHours : 0) +
+                             (formData.hasTD ? formData.tdHours : 0) +
+                             (formData.hasTP ? formData.tpHours : 0);
+    const effectiveWeeklyHours = Number(formData.weeklyHours) || (calculatedWeekly > 0 ? calculatedWeekly : 3.0);
+
     const metadataPayload = {
       credits: Number(formData.credits) || 3,
       coefficient: Number(formData.coefficient) || 2,
@@ -368,7 +405,10 @@ export default function CoursesPage() {
       study_level: formData.studyLevel,
       specialization: payloadSpecializationStr,
       specialties: payloadSpecialties,
-      weekly_hours: Number(formData.weeklyHours) || 3.0,
+      weekly_hours: effectiveWeeklyHours,
+      lecture_hours: formData.hasLecture ? formData.lectureHours : 0,
+      td_hours: formData.hasTD ? formData.tdHours : 0,
+      tp_hours: formData.hasTP ? formData.tpHours : 0,
       session_types,
     };
 
@@ -385,7 +425,10 @@ export default function CoursesPage() {
       has_lecture: formData.hasLecture,
       has_td: formData.hasTD,
       has_tp: formData.hasTP,
-      weekly_hours: Number(formData.weeklyHours) || 3.0,
+      weekly_hours: effectiveWeeklyHours,
+      lecture_hours: formData.hasLecture ? formData.lectureHours : 0,
+      td_hours: formData.hasTD ? formData.tdHours : 0,
+      tp_hours: formData.hasTP ? formData.tpHours : 0,
       metadata: metadataPayload,
       ...(editingCourse ? { version: editingCourse.version } : {}),
     };
@@ -854,27 +897,36 @@ export default function CoursesPage() {
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="text-xs font-semibold text-foreground">
-                            المعامل: <span className="font-bold text-indigo-600">{meta.coefficient}</span> | الرصيد: <span className="font-bold text-indigo-600">{meta.credits}</span> ECTS
+                            المعامل: <span className="font-bold text-indigo-600 dark:text-indigo-400">{meta.coefficient}</span> | الرصيد: <span className="font-bold text-indigo-600 dark:text-indigo-400">{meta.credits}</span> ECTS
                           </div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
-                            {meta.weekly_hours} ساعة أسبوعياً
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md font-mono text-xs font-bold border border-indigo-200 dark:border-indigo-800">
+                              {meta.weekly_hours} س/أسبوع
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1 font-medium">
+                            {meta.lecture_hours > 0 && <span>محاضرة: {meta.lecture_hours}س</span>}
+                            {meta.lecture_hours > 0 && (meta.td_hours > 0 || meta.tp_hours > 0) && <span>•</span>}
+                            {meta.td_hours > 0 && <span>TD: {meta.td_hours}س</span>}
+                            {meta.td_hours > 0 && meta.tp_hours > 0 && <span>•</span>}
+                            {meta.tp_hours > 0 && <span>TP: {meta.tp_hours}س</span>}
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {meta.session_types.includes('lecture') && (
-                              <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 font-medium">
-                                محاضرة
+                              <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 font-medium border border-slate-200 dark:border-slate-700">
+                                محاضرة {meta.lecture_hours > 0 ? `(${meta.lecture_hours}س)` : ''}
                               </span>
                             )}
                             {meta.session_types.includes('td') && (
-                              <span className="px-2 py-0.5 rounded text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 font-medium">
-                                TD
+                              <span className="px-2 py-0.5 rounded text-[11px] bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 font-medium">
+                                TD {meta.td_hours > 0 ? `(${meta.td_hours}س)` : ''}
                               </span>
                             )}
                             {meta.session_types.includes('tp') && (
-                              <span className="px-2 py-0.5 rounded text-[11px] bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 font-medium">
-                                TP مخبر
+                              <span className="px-2 py-0.5 rounded text-[11px] bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 font-medium">
+                                TP {meta.tp_hours > 0 ? `(${meta.tp_hours}س)` : ''}
                               </span>
                             )}
                           </div>
@@ -1143,8 +1195,8 @@ export default function CoursesPage() {
             </select>
           </div>
 
-          {/* Credits, Coefficient, Weekly Hours */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Coefficient & Credits */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-200 mb-1">
                 المعامل (Coefficient)
@@ -1174,60 +1226,182 @@ export default function CoursesPage() {
                 className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
               />
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-200 mb-1">
-                الحجم الساعي الأسبوعي
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="1"
-                max="20"
-                required
-                value={formData.weeklyHours}
-                onChange={(e) => setFormData({ ...formData, weeklyHours: Number(e.target.value) || 3 })}
-                className="w-full px-3 py-2 border border-slate-700 rounded-xl text-sm bg-slate-800 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-              />
-            </div>
           </div>
 
-          {/* Session Types Selection */}
-          <div className="border border-slate-800 rounded-xl p-3.5 bg-slate-950/50">
-            <label className="block text-xs font-semibold text-slate-200 mb-2">
-              أنواع الحصص المقررة في المقياس:
-            </label>
-            <div className="flex items-center gap-5 text-xs">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100">
-                <input
-                  type="checkbox"
-                  checked={formData.hasLecture}
-                  onChange={(e) => setFormData({ ...formData, hasLecture: e.target.checked })}
-                  className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                />
-                <span className="font-medium">محاضرة (Cours)</span>
-              </label>
+          {/* Session Types & Weekly Hours Allocation for Automated Scheduling Matrix */}
+          <div className="border border-slate-800 rounded-2xl p-4 bg-slate-950/70 space-y-3.5 shadow-inner">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-100">
+                  أنواع الحصص وتوزيع الساعات الأسبوعية:
+                </label>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  حدد الحجم الساعي الأسبوعي لكل نمط حصة لاعتمادها في مصفوفة الجداول الآلية
+                </p>
+              </div>
 
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100">
-                <input
-                  type="checkbox"
-                  checked={formData.hasTD}
-                  onChange={(e) => setFormData({ ...formData, hasTD: e.target.checked })}
-                  className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                />
-                <span className="font-medium">أعمال موجهة (TD)</span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300 hover:text-slate-100">
-                <input
-                  type="checkbox"
-                  checked={formData.hasTP}
-                  onChange={(e) => setFormData({ ...formData, hasTP: e.target.checked })}
-                  className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                />
-                <span className="font-medium">أعمال تطبيقية (TP مخبر)</span>
-              </label>
+              <div className="text-right">
+                <span className="text-[11px] font-mono text-indigo-300 bg-indigo-950/70 border border-indigo-500/40 px-2.5 py-1 rounded-xl shadow-sm inline-block">
+                  الإجمالي: <strong className="text-white text-xs">{formData.weeklyHours.toFixed(1)}</strong> س/أسبوع
+                </span>
+              </div>
             </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Lecture (Cours) */}
+              <div
+                className={`p-3 rounded-xl border transition-all ${
+                  formData.hasLecture
+                    ? 'bg-slate-900 border-indigo-500/50 ring-1 ring-indigo-500/20'
+                    : 'bg-slate-900/40 border-slate-800 opacity-60'
+                }`}
+              >
+                <label className="flex items-center gap-2 cursor-pointer text-slate-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.hasLecture}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const newL = checked ? (formData.lectureHours > 0 ? formData.lectureHours : 1.5) : 0;
+                      const newTotal = newL + (formData.hasTD ? formData.tdHours : 0) + (formData.hasTP ? formData.tpHours : 0);
+                      setFormData({
+                        ...formData,
+                        hasLecture: checked,
+                        lectureHours: newL,
+                        weeklyHours: Number(newTotal.toFixed(1))
+                      });
+                    }}
+                    className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                  />
+                  <span className="font-bold text-xs">محاضرة (Cours)</span>
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="10"
+                    disabled={!formData.hasLecture}
+                    value={formData.lectureHours}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value) || 0);
+                      const newTotal = val + (formData.hasTD ? formData.tdHours : 0) + (formData.hasTP ? formData.tpHours : 0);
+                      setFormData({
+                        ...formData,
+                        lectureHours: val,
+                        weeklyHours: Number(newTotal.toFixed(1))
+                      });
+                    }}
+                    className="w-full px-2.5 py-1.5 border border-slate-700 rounded-lg text-xs bg-slate-800 text-slate-100 font-bold focus:ring-2 focus:ring-indigo-500 disabled:opacity-40"
+                  />
+                  <span className="text-[11px] text-slate-400 shrink-0 font-medium">س/أسبوع</span>
+                </div>
+              </div>
+
+              {/* TD */}
+              <div
+                className={`p-3 rounded-xl border transition-all ${
+                  formData.hasTD
+                    ? 'bg-slate-900 border-amber-500/50 ring-1 ring-amber-500/20'
+                    : 'bg-slate-900/40 border-slate-800 opacity-60'
+                }`}
+              >
+                <label className="flex items-center gap-2 cursor-pointer text-slate-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.hasTD}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const newTD = checked ? (formData.tdHours > 0 ? formData.tdHours : 1.5) : 0;
+                      const newTotal = (formData.hasLecture ? formData.lectureHours : 0) + newTD + (formData.hasTP ? formData.tpHours : 0);
+                      setFormData({
+                        ...formData,
+                        hasTD: checked,
+                        tdHours: newTD,
+                        weeklyHours: Number(newTotal.toFixed(1))
+                      });
+                    }}
+                    className="rounded border-slate-700 bg-slate-800 text-amber-500 focus:ring-amber-500 h-4 w-4"
+                  />
+                  <span className="font-bold text-xs">أعمال موجهة (TD)</span>
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="10"
+                    disabled={!formData.hasTD}
+                    value={formData.tdHours}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value) || 0);
+                      const newTotal = (formData.hasLecture ? formData.lectureHours : 0) + val + (formData.hasTP ? formData.tpHours : 0);
+                      setFormData({
+                        ...formData,
+                        tdHours: val,
+                        weeklyHours: Number(newTotal.toFixed(1))
+                      });
+                    }}
+                    className="w-full px-2.5 py-1.5 border border-slate-700 rounded-lg text-xs bg-slate-800 text-slate-100 font-bold focus:ring-2 focus:ring-amber-500 disabled:opacity-40"
+                  />
+                  <span className="text-[11px] text-slate-400 shrink-0 font-medium">س/أسبوع</span>
+                </div>
+              </div>
+
+              {/* TP */}
+              <div
+                className={`p-3 rounded-xl border transition-all ${
+                  formData.hasTP
+                    ? 'bg-slate-900 border-purple-500/50 ring-1 ring-purple-500/20'
+                    : 'bg-slate-900/40 border-slate-800 opacity-60'
+                }`}
+              >
+                <label className="flex items-center gap-2 cursor-pointer text-slate-200 mb-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.hasTP}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const newTP = checked ? (formData.tpHours > 0 ? formData.tpHours : 1.5) : 0;
+                      const newTotal = (formData.hasLecture ? formData.lectureHours : 0) + (formData.hasTD ? formData.tdHours : 0) + newTP;
+                      setFormData({
+                        ...formData,
+                        hasTP: checked,
+                        tpHours: newTP,
+                        weeklyHours: Number(newTotal.toFixed(1))
+                      });
+                    }}
+                    className="rounded border-slate-700 bg-slate-800 text-purple-500 focus:ring-purple-500 h-4 w-4"
+                  />
+                  <span className="font-bold text-xs">أعمال تطبيقية (TP)</span>
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="10"
+                    disabled={!formData.hasTP}
+                    value={formData.tpHours}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value) || 0);
+                      const newTotal = (formData.hasLecture ? formData.lectureHours : 0) + (formData.hasTD ? formData.tdHours : 0) + val;
+                      setFormData({
+                        ...formData,
+                        tpHours: val,
+                        weeklyHours: Number(newTotal.toFixed(1))
+                      });
+                    }}
+                    className="w-full px-2.5 py-1.5 border border-slate-700 rounded-lg text-xs bg-slate-800 text-slate-100 font-bold focus:ring-2 focus:ring-purple-500 disabled:opacity-40"
+                  />
+                  <span className="text-[11px] text-slate-400 shrink-0 font-medium">س/أسبوع</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-relaxed text-right">
+              * تُعتمد هذه الساعات في مصفوفة الجداول الآلية (P13) لتحديد مدد الحصص واحتساب الأعباء البيداغوجية للأساتذة والأفواج بدقة.
+            </p>
           </div>
 
           {/* Footer Actions */}

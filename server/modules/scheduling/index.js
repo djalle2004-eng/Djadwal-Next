@@ -137,6 +137,50 @@ async function generateScheduleEndpoint(req, res) {
 
     const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
+    const coursesMap = new Map();
+    (rawCourses || []).forEach(c => {
+      let meta = {};
+      try {
+        meta = typeof c.metadata === 'string' ? JSON.parse(c.metadata || '{}') : (c.metadata || {});
+      } catch {
+        meta = {};
+      }
+      const explicitLecture = meta.lecture_hours !== undefined ? Number(meta.lecture_hours) : (c.lecture_hours !== undefined ? Number(c.lecture_hours) : null);
+      const explicitTD = meta.td_hours !== undefined ? Number(meta.td_hours) : (c.td_hours !== undefined ? Number(c.td_hours) : null);
+      const explicitTP = meta.tp_hours !== undefined ? Number(meta.tp_hours) : (c.tp_hours !== undefined ? Number(c.tp_hours) : null);
+      coursesMap.set(c.id, {
+        ...c,
+        lecture_hours: explicitLecture !== null ? explicitLecture : (c.has_lecture !== false ? 1.5 : 0),
+        td_hours: explicitTD !== null ? explicitTD : (c.has_td !== false ? 1.5 : 0),
+        tp_hours: explicitTP !== null ? explicitTP : (c.has_tp ? 1.5 : 0),
+        weekly_hours: Number(c.weekly_hours ?? meta.weekly_hours ?? 3.0),
+      });
+    });
+
+    function resolveTaskDuration(item) {
+      if (item.start_time && item.end_time) {
+        const [sh, sm] = String(item.start_time).split(':').map(Number);
+        const [eh, em] = String(item.end_time).split(':').map(Number);
+        const diff = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+        if (diff > 0) return diff;
+      }
+      const c = coursesMap.get(item.course_id || item.courseId);
+      const sType = String(item.session_type || item.sessionType || 'lecture').toLowerCase();
+      if (c) {
+        if (sType === 'lecture' || sType === 'cours') {
+          const h = Number(c.lecture_hours);
+          if (h > 0) return Math.round(h * 60);
+        } else if (sType === 'td') {
+          const h = Number(c.td_hours);
+          if (h > 0) return Math.round(h * 60);
+        } else if (sType === 'tp') {
+          const h = Number(c.tp_hours);
+          if (h > 0) return Math.round(h * 60);
+        }
+      }
+      return 90;
+    }
+
     const assignments = await executeQuery(`
       SELECT a.*,
              c.name as course_name,
@@ -152,7 +196,7 @@ async function generateScheduleEndpoint(req, res) {
       ${whereStr}
     `, params);
 
-    // Build Scheduling Tasks
+    // Build Scheduling Tasks with dynamic duration from course weekly hours allocation
     const tasks = assignments.map(a => ({
       id: a.id,
       assignmentId: a.id,
@@ -163,7 +207,7 @@ async function generateScheduleEndpoint(req, res) {
       groupId: a.group_id,
       groupName: a.group_name || `فوج #${a.group_id}`,
       sessionType: a.session_type || 'lecture',
-      durationMinutes: 90,
+      durationMinutes: resolveTaskDuration(a),
       studentCount: 35,
       assignedSlot: a.day_of_week !== null && a.start_time && a.end_time ? {
         dayOfWeek: Number(a.day_of_week),
@@ -298,6 +342,16 @@ async function explainConflictsEndpoint(req, res) {
     const { sessions, semester_id, academic_year } = req.body || {};
     let taskList = [];
 
+    const calcDuration = (item) => {
+      if (item.start_time && item.end_time) {
+        const [sh, sm] = String(item.start_time).split(':').map(Number);
+        const [eh, em] = String(item.end_time).split(':').map(Number);
+        const diff = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+        if (diff > 0) return diff;
+      }
+      return 90;
+    };
+
     if (Array.isArray(sessions) && sessions.length > 0) {
       taskList = sessions.map(s => ({
         id: s.id || Math.random(),
@@ -308,7 +362,7 @@ async function explainConflictsEndpoint(req, res) {
         groupId: s.group_id || s.groupId,
         groupName: s.group_name || s.groupName || `فوج #${s.group_id}`,
         sessionType: s.session_type || s.sessionType || 'lecture',
-        durationMinutes: 90,
+        durationMinutes: calcDuration(s),
         studentCount: s.student_count || 35,
         assignedSlot: s.assignedSlot || {
           dayOfWeek: Number(s.day_of_week),
@@ -353,7 +407,7 @@ async function explainConflictsEndpoint(req, res) {
         groupId: a.group_id,
         groupName: a.group_name || `فوج #${a.group_id}`,
         sessionType: a.session_type || 'lecture',
-        durationMinutes: 90,
+        durationMinutes: calcDuration(a),
         studentCount: 35,
         assignedSlot: {
           dayOfWeek: Number(a.day_of_week),
@@ -428,6 +482,16 @@ async function simulateImpactEndpoint(req, res) {
       LEFT JOIN rooms r ON a.room_id = r.id
     `);
 
+    const calcDuration = (item) => {
+      if (item.start_time && item.end_time) {
+        const [sh, sm] = String(item.start_time).split(':').map(Number);
+        const [eh, em] = String(item.end_time).split(':').map(Number);
+        const diff = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+        if (diff > 0) return diff;
+      }
+      return 90;
+    };
+
     const baselineTasks = baselineRows.map(a => ({
       id: a.id,
       courseId: a.course_id,
@@ -437,7 +501,7 @@ async function simulateImpactEndpoint(req, res) {
       groupId: a.group_id,
       groupName: a.group_name || `فوج #${a.group_id}`,
       sessionType: a.session_type || 'lecture',
-      durationMinutes: 90,
+      durationMinutes: calcDuration(a),
       studentCount: 35,
       assignedSlot: {
         dayOfWeek: Number(a.day_of_week),
@@ -457,7 +521,7 @@ async function simulateImpactEndpoint(req, res) {
       groupId: p.group_id,
       groupName: p.group_name || `فوج #${p.group_id}`,
       sessionType: p.session_type || 'lecture',
-      durationMinutes: 90,
+      durationMinutes: calcDuration(p),
       studentCount: 35,
       assignedSlot: p.assignedSlot || {
         dayOfWeek: Number(p.day_of_week),

@@ -232,5 +232,32 @@ describe('P16: Course Curriculum & Module Guide Excel Engine Suite', () => {
     expect(firstRow['السداسي']).toBeDefined();
     expect(firstRow['المعامل']).toBeDefined();
     expect(firstRow['الرصيد']).toBeDefined();
+    expect(firstRow['ساعات المحاضرة']).toBeDefined();
+    expect(firstRow['ساعات TD']).toBeDefined();
+    expect(firstRow['ساعات TP']).toBeDefined();
+  });
+
+  // Test 7: Lecture, TD, and TP Hours Parsing & Diff
+  it('correctly parses session hours breakdown (lecture_hours, td_hours, tp_hours) and detects diffs', () => {
+    const rawRows = [
+      {
+        'اسم المقياس': 'برمجة الويب المتقدمة',
+        'رمز المقياس': 'WEB301',
+        'محاضرة': 'نعم',
+        'أعمال موجهة': 'نعم',
+        'أعمال تطبيقية': 'نعم',
+        'ساعات المحاضرة': 2.0,
+        'ساعات td': 1.5,
+        'ساعات tp': 3.0,
+      },
+    ];
+
+    const result = dryRunCoursesImport(rawRows, [], [], []);
+    expect(result.summary.toCreate).toBe(1);
+    const row = result.rows[0];
+    expect(row.lecture_hours).toBe(2.0);
+    expect(row.td_hours).toBe(1.5);
+    expect(row.tp_hours).toBe(3.0);
+    expect(row.weekly_hours).toBe(6.5);
   });
 });
