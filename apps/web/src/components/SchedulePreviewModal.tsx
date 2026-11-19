@@ -83,6 +83,7 @@ export interface SchedulePreviewModalProps {
   conflicts?: any[];
   explanationsArabic?: string[];
   isPreliminary?: boolean;
+  withoutProfessors?: boolean;
   onApproveAsDraft?: (draftTitle: string) => Promise<void>;
   onBackToConfig?: () => void;
   initialDraftTitle?: string;
@@ -162,6 +163,7 @@ export function SchedulePreviewModal({
   conflicts = [],
   explanationsArabic = [],
   isPreliminary = true,
+  withoutProfessors = false,
   onApproveAsDraft,
   onBackToConfig,
   initialDraftTitle = 'مسودة مقترحة من المولّد الآلي',
@@ -186,10 +188,15 @@ export function SchedulePreviewModal({
       const start = t.assignedSlot?.startTime || t.start_time || '';
       const end = t.assignedSlot?.endTime || t.end_time || '';
 
+      const rawProf = t.professorName || t.professor_name || (t.professorId && String(t.professorId) !== '0' && String(t.professorId) !== 'null' ? `أستاذ #${t.professorId}` : '');
+      const isUnassignedProf = !t.professorId || String(t.professorId) === '0' || String(t.professorId) === 'null' || !rawProf || rawProf.includes('دون إسناد');
+      const resolvedProfName = isUnassignedProf ? 'دون إسناد (قيد التعيين)' : rawProf;
+
       return {
         id: t.id || t.assignmentId || idx + 1,
         courseName: t.courseName || t.course_name || `مقياس #${t.courseId || ''}`,
-        professorName: t.professorName || t.professor_name || `أستاذ #${t.professorId || ''}`,
+        professorName: resolvedProfName,
+        isUnassignedProf,
         groupName: t.groupName || t.group_name || `فوج #${t.groupId || ''}`,
         roomName: t.assignedRoomName || t.room_name || `قاعة #${t.assignedRoomId || ''}`,
         sessionType: t.sessionType || t.session_type || 'lecture',
@@ -342,6 +349,11 @@ export function SchedulePreviewModal({
                   {isPreliminary && (
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
                       معاينة أولية مسبقة (قبل الاعتماد والحفظ)
+                    </span>
+                  )}
+                  {withoutProfessors && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20">
+                      توليد دون إسناد للأساتذة
                     </span>
                   )}
                 </div>
@@ -651,7 +663,13 @@ export function SchedulePreviewModal({
                                             {gridPerspective !== 'professor' && (
                                               <div className="flex items-center gap-1">
                                                 <GraduationCap className="w-3 h-3 shrink-0" />
-                                                <span className="truncate">{t.professorName}</span>
+                                                {t.isUnassignedProf ? (
+                                                  <span className="truncate text-[9.5px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold border border-slate-200/60 dark:border-slate-700">
+                                                    دون إسناد
+                                                  </span>
+                                                ) : (
+                                                  <span className="truncate">{t.professorName}</span>
+                                                )}
                                               </div>
                                             )}
                                             {gridPerspective !== 'group' && (
@@ -764,7 +782,15 @@ export function SchedulePreviewModal({
                                 </span>
                               </td>
                               <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{t.groupName}</td>
-                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{t.professorName}</td>
+                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
+                                {t.isUnassignedProf ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                                    دون إسناد (قيد التعيين)
+                                  </span>
+                                ) : (
+                                  t.professorName
+                                )}
+                              </td>
                               <td className="py-3 px-4 font-bold text-emerald-700 dark:text-emerald-400">{t.roomName}</td>
                               <td className="py-3 px-4 text-center">
                                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200/60">

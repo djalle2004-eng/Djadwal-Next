@@ -109,16 +109,19 @@ function runFastHeuristic(rawTasks, constraints, grid, rooms, prng) {
     let minPenalty = Infinity;
 
     for (const slot of grid) {
-      const profBusy = isEntityBusy(busyEntities, 'prof', task.professorId, slot);
+      const hasProf = Boolean(task.professorId && String(task.professorId) !== '0' && String(task.professorId) !== 'null' && String(task.professorId) !== 'undefined');
+      const profBusy = hasProf ? isEntityBusy(busyEntities, 'prof', task.professorId, slot) : false;
       const groupBusy = isEntityBusy(busyEntities, 'group', task.groupId, slot);
 
       if (profBusy || groupBusy) continue;
 
-      const profProfile = constraints.professors.get(String(task.professorId));
-      if (profProfile?.unavailabilities?.some(u =>
-        u.dayOfWeek === slot.dayOfWeek && isTimeOverlapping(slot.startTime, slot.endTime, u.startTime, u.endTime)
-      )) {
-        continue;
+      if (hasProf) {
+        const profProfile = constraints.professors.get(String(task.professorId));
+        if (profProfile?.unavailabilities?.some(u =>
+          u.dayOfWeek === slot.dayOfWeek && isTimeOverlapping(slot.startTime, slot.endTime, u.startTime, u.endTime)
+        )) {
+          continue;
+        }
       }
 
       for (const room of rooms) {
@@ -310,14 +313,21 @@ function buildExplanations(tasks, conflicts, status, durationMs) {
 }
 
 function isEntityBusy(busySet, type, id, slot) {
+  if (type === 'prof' && (!id || id === 'null' || id === 'undefined' || id === 0 || id === '0')) return false;
   const key = `${type}:${id}:${slot.dayOfWeek}:${slot.startTime}`;
   return busySet.has(key);
 }
 
 function markBusy(busySet, task, slot, roomId) {
-  busySet.add(`prof:${task.professorId}:${slot.dayOfWeek}:${slot.startTime}`);
-  busySet.add(`group:${task.groupId}:${slot.dayOfWeek}:${slot.startTime}`);
-  busySet.add(`room:${roomId}:${slot.dayOfWeek}:${slot.startTime}`);
+  if (task.professorId && String(task.professorId) !== 'null' && String(task.professorId) !== 'undefined' && String(task.professorId) !== '0') {
+    busySet.add(`prof:${task.professorId}:${slot.dayOfWeek}:${slot.startTime}`);
+  }
+  if (task.groupId) {
+    busySet.add(`group:${task.groupId}:${slot.dayOfWeek}:${slot.startTime}`);
+  }
+  if (roomId) {
+    busySet.add(`room:${roomId}:${slot.dayOfWeek}:${slot.startTime}`);
+  }
 }
 
 module.exports = {

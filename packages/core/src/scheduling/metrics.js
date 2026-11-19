@@ -20,6 +20,7 @@ function computeSchedulingMetrics(params = {}) {
 
   const profHours = {};
   for (const t of tasks) {
+    if (!t.professorId || String(t.professorId) === '0' || String(t.professorId) === 'null' || String(t.professorId) === 'undefined') continue;
     const pid = String(t.professorId);
     profHours[pid] = (profHours[pid] || 0) + (t.durationMinutes / 60);
   }

@@ -44,7 +44,9 @@ export function detectExplainableConflicts(
       const dayName = getDayNameArabic(slotA.dayOfWeek);
 
       // 1.1 Professor Overlap (CRITICAL)
-      if (String(tA.professorId) === String(tB.professorId)) {
+      const hasProfA = Boolean(tA.professorId && String(tA.professorId) !== '0' && String(tA.professorId) !== 'null' && String(tA.professorId) !== 'undefined');
+      const hasProfB = Boolean(tB.professorId && String(tB.professorId) !== '0' && String(tB.professorId) !== 'null' && String(tB.professorId) !== 'undefined');
+      if (hasProfA && hasProfB && String(tA.professorId) === String(tB.professorId)) {
         conflicts.push(createProfessorOverlapConflict(tA, tB, dayName, assignedTasks, constraints));
       }
 
@@ -89,7 +91,7 @@ export function detectExplainableConflicts(
     }
 
     // 2.3 Professor Unavailability Check (CRITICAL)
-    if (constraints?.professors) {
+    if (constraints?.professors && task.professorId && String(task.professorId) !== '0' && String(task.professorId) !== 'null' && String(task.professorId) !== 'undefined') {
       const prof = constraints.professors.get(String(task.professorId));
       if (prof?.unavailabilities) {
         for (const unavail of prof.unavailabilities) {
@@ -105,6 +107,7 @@ export function detectExplainableConflicts(
   if (constraints?.professors) {
     const profHours = new Map<string, number>();
     for (const t of assignedTasks) {
+      if (!t.professorId || String(t.professorId) === '0' || String(t.professorId) === 'null' || String(t.professorId) === 'undefined') continue;
       const pid = String(t.professorId);
       profHours.set(pid, (profHours.get(pid) || 0) + (t.durationMinutes / 60));
     }

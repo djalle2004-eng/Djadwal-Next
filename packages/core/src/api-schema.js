@@ -251,6 +251,7 @@ const generateScheduleSchema = z.object({
   timeout_ms: z.coerce.number().int().min(1000).max(180000).optional().default(30000),
   save_as_draft: z.boolean().optional().default(false),
   draft_title: z.string().optional().default('مسودة مقترحة آلياً'),
+  without_professors: z.boolean().optional().default(false),
   seed: z.coerce.number().int().optional()
 });
 

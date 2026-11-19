@@ -45,7 +45,8 @@ async function generateScheduleEndpoint(req, res) {
       timeout_ms = 30000,
       save_as_draft = false,
       draft_title = 'مسودة مقترحة آلياً',
-      seed
+      seed,
+      without_professors = false
     } = req.body || {};
 
     // 1. Fetch current entities
@@ -210,7 +211,7 @@ async function generateScheduleEndpoint(req, res) {
 
     // Build Scheduling Tasks with dynamic duration from course weekly hours allocation (excluding disabled/archived courses)
     const activeCourseIdSet = new Set(courses.map(c => c.id));
-    const tasks = assignments
+    let tasks = assignments
       .filter(a => {
         const cInfo = coursesMap.get(a.course_id);
         if (cInfo && (cInfo.is_active === false || cInfo.deleted_at)) {
@@ -226,8 +227,8 @@ async function generateScheduleEndpoint(req, res) {
         assignmentId: a.id,
         courseId: a.course_id,
         courseName: a.course_name || `مادة #${a.course_id}`,
-        professorId: a.professor_id,
-        professorName: a.professor_name || `أستاذ #${a.professor_id}`,
+        professorId: without_professors ? null : a.professor_id,
+        professorName: without_professors ? 'دون إسناد (قيد التعيين)' : (a.professor_name || `أستاذ #${a.professor_id}`),
         groupId: a.group_id,
         groupName: a.group_name || `فوج #${a.group_id}`,
         sessionType: a.session_type || 'lecture',
@@ -243,9 +244,94 @@ async function generateScheduleEndpoint(req, res) {
         fixed: false
       }));
 
+    // If without_professors is enabled and no tasks were found from assignments, synthesize scheduling tasks directly from courses & groups
+    if (without_professors && tasks.length === 0 && courses.length > 0) {
+      let syntheticTaskId = 100000;
+      for (const course of courses) {
+        const courseMeta = typeof course.metadata === 'string' ? JSON.parse(course.metadata || '{}') : (course.metadata || {});
+        const courseSpecId = course.specialization_id ?? courseMeta.specialization_id;
+        const courseSpecIds = Array.isArray(courseMeta.specialization_ids) ? courseMeta.specialization_ids : (courseSpecId ? [courseSpecId] : []);
+        const courseSpecs = Array.isArray(courseMeta.specialties) ? courseMeta.specialties.map(s => String(s).toLowerCase().trim()) : [];
+        if (course.specialization) courseSpecs.push(String(course.specialization).toLowerCase().trim());
+        if (courseMeta.specialization) courseSpecs.push(String(courseMeta.specialization).toLowerCase().trim());
+
+        const matchingGroups = groups.filter(g => {
+          if (courseSpecs.length === 0 && courseSpecIds.length === 0) return true;
+          const gSpec = String(g.specialization || '').toLowerCase().trim();
+          if (gSpec && courseSpecs.some(s => s.includes(gSpec) || gSpec.includes(s))) return true;
+          return false;
+        });
+
+        const targetGroups = matchingGroups.length > 0 ? matchingGroups : (groups.length > 0 ? groups.slice(0, 2) : [{ id: 1, name: 'فوج عام' }]);
+        const cInfo = coursesMap.get(course.id) || course;
+        const hasLecture = cInfo.lecture_hours > 0 || cInfo.has_lecture !== false;
+        const hasTD = cInfo.td_hours > 0 || cInfo.has_td;
+        const hasTP = cInfo.tp_hours > 0 || cInfo.has_tp;
+
+        // Lecture task (cohort level)
+        if (hasLecture) {
+          const firstGroup = targetGroups[0];
+          tasks.push({
+            id: syntheticTaskId++,
+            assignmentId: null,
+            courseId: course.id,
+            courseName: course.name,
+            professorId: null,
+            professorName: 'دون إسناد (قيد التعيين)',
+            groupId: firstGroup.id,
+            groupName: targetGroups.length > 1 ? `${firstGroup.name} (مشترك)` : firstGroup.name,
+            sessionType: 'lecture',
+            durationMinutes: cInfo.lecture_hours ? Math.round(cInfo.lecture_hours * 60) : 90,
+            studentCount: 70,
+            fixed: false
+          });
+        }
+
+        // TD task per group
+        if (hasTD) {
+          for (const g of targetGroups) {
+            tasks.push({
+              id: syntheticTaskId++,
+              assignmentId: null,
+              courseId: course.id,
+              courseName: course.name,
+              professorId: null,
+              professorName: 'دون إسناد (قيد التعيين)',
+              groupId: g.id,
+              groupName: g.name,
+              sessionType: 'td',
+              durationMinutes: cInfo.td_hours ? Math.round(cInfo.td_hours * 60) : 90,
+              studentCount: 35,
+              fixed: false
+            });
+          }
+        }
+
+        // TP task per group
+        if (hasTP) {
+          for (const g of targetGroups) {
+            tasks.push({
+              id: syntheticTaskId++,
+              assignmentId: null,
+              courseId: course.id,
+              courseName: course.name,
+              professorId: null,
+              professorName: 'دون إسناد (قيد التعيين)',
+              groupId: g.id,
+              groupName: g.name,
+              sessionType: 'tp',
+              durationMinutes: cInfo.tp_hours ? Math.round(cInfo.tp_hours * 60) : 90,
+              studentCount: 20,
+              fixed: false
+            });
+          }
+        }
+      }
+    }
+
     // Build Constraints
     const constraints = buildConstraints({
-      professors: professors.map(p => ({
+      professors: without_professors ? [] : professors.map(p => ({
         id: p.id,
         name: p.name,
         maxWeeklyHours: 18,
@@ -314,6 +400,7 @@ async function generateScheduleEndpoint(req, res) {
       // Insert Items
       for (const t of solverResult.tasks) {
         if (t.assignedSlot && t.assignedRoomId) {
+          const profId = t.professorId && String(t.professorId) !== 'null' && String(t.professorId) !== 'undefined' && Number(t.professorId) > 0 ? Number(t.professorId) : null;
           await executeQuery(`
             INSERT INTO schedule_version_items (
               schedule_version_id, assignment_id, course_id, professor_id, group_id, room_id,
@@ -323,14 +410,14 @@ async function generateScheduleEndpoint(req, res) {
             createdVersionId,
             t.assignmentId || null,
             t.courseId,
-            t.professorId,
+            profId,
             t.groupId,
             t.assignedRoomId,
             t.assignedSlot.dayOfWeek,
             t.assignedSlot.startTime,
             t.assignedSlot.endTime,
             t.sessionType,
-            'اقتراح آلي'
+            without_professors ? 'اقتراح آلي (دون إسناد)' : 'اقتراح آلي'
           ]);
         }
       }
@@ -728,6 +815,7 @@ async function createVersionEndpoint(req, res) {
     const createdId = ins[0]?.id;
 
     for (const item of items) {
+      const profId = item.professor_id && String(item.professor_id) !== 'null' && String(item.professor_id) !== 'undefined' && Number(item.professor_id) > 0 ? Number(item.professor_id) : null;
       await executeQuery(`
         INSERT INTO schedule_version_items (
           schedule_version_id, assignment_id, course_id, professor_id, group_id, room_id,
@@ -737,7 +825,7 @@ async function createVersionEndpoint(req, res) {
         createdId,
         item.assignment_id || null,
         item.course_id,
-        item.professor_id,
+        profId,
         item.group_id,
         item.room_id,
         item.day_of_week,

@@ -99,6 +99,7 @@ export default function ScheduleVersionsPage() {
   const [genTimeoutSec, setGenTimeoutSec] = useState(15);
   const [saveAsDraft, setSaveAsDraft] = useState(true);
   const [draftTitle, setDraftTitle] = useState('مسودة مقترحة من المولّد الآلي');
+  const [withoutProfessors, setWithoutProfessors] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<any>(null);
 
@@ -159,7 +160,8 @@ export default function ScheduleVersionsPage() {
         mode: genMode,
         timeout_ms: genTimeoutSec * 1000,
         save_as_draft: false,
-        draft_title: draftTitle
+        draft_title: draftTitle,
+        without_professors: withoutProfessors
       });
 
       if (res && res.data) {
@@ -167,7 +169,7 @@ export default function ScheduleVersionsPage() {
         setPreviewTasks(res.data.tasks || []);
         setPreviewMetrics(res.data.metrics || null);
         setPreviewConflicts(res.data.conflicts || []);
-        setPreviewTitle(`معاينة الجداول الأولية المنشأة (${genMode === 'fast' ? 'بحث إرشادي فوري' : 'تحسين قيود متقدم CP-SAT'})`);
+        setPreviewTitle(`معاينة الجداول الأولية المنشأة (${genMode === 'fast' ? 'بحث إرشادي فوري' : 'تحسين قيود متقدم CP-SAT'}${withoutProfessors ? ' - دون إسناد للأساتذة' : ''})`);
         setIsPreviewPreliminary(true);
         setIsGenModalOpen(false); // إغلاق نافذة الإعدادات
         setIsPreviewModalOpen(true); // فتح نافذة المعاينة الأولية الكاملة
@@ -922,6 +924,33 @@ export default function ScheduleVersionsPage() {
                   />
                 </div>
 
+                {/* خيار توليد الجداول دون إسناد للأساتذة */}
+                <div
+                  onClick={() => setWithoutProfessors(!withoutProfessors)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                    withoutProfessors
+                      ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-950 dark:text-indigo-200'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/40 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    id="withoutProfessorsToggle"
+                    checked={withoutProfessors}
+                    onChange={(e) => setWithoutProfessors(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <div className="flex-1">
+                    <label htmlFor="withoutProfessorsToggle" className="text-xs font-bold block cursor-pointer">
+                      توليد الجداول للمقاييس دون إسناد للأساتذة
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      توزيع حصص المقاييس والأفواج والقاعات مباشرة دون اشتراط تعيين الأساتذة مسبقاً (تجاوز تعارضات وتفرغ الأساتذة مع إبراز الحصص كـ &quot;دون إسناد&quot;).
+                    </p>
+                  </div>
+                </div>
+
                 <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-0.5">
                     عنوان المسودة المقترحة (عند الاعتماد):
@@ -968,6 +997,7 @@ export default function ScheduleVersionsPage() {
         conflicts={previewConflicts}
         isPreliminary={isPreviewPreliminary}
         initialDraftTitle={draftTitle}
+        withoutProfessors={withoutProfessors}
         onApproveAsDraft={handleApproveDraft}
         onBackToConfig={handleBackToConfig}
         approving={approvingDraft}
