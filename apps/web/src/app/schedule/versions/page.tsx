@@ -38,6 +38,7 @@ import {
   DialogDescription
 } from '@djadwal/ui';
 import { api } from '@/lib/api';
+import { SchedulePreviewModal } from '@/components/SchedulePreviewModal';
 
 interface Version {
   id: number;
@@ -101,6 +102,16 @@ export default function ScheduleVersionsPage() {
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState<any>(null);
 
+  // Preliminary Preview Modal State (معاينة الجداول الأولية قبل الاعتماد أو استعراض أي إصدار)
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [previewTasks, setPreviewTasks] = useState<any[]>([]);
+  const [previewMetrics, setPreviewMetrics] = useState<any>(null);
+  const [previewConflicts, setPreviewConflicts] = useState<any[]>([]);
+  const [previewTitle, setPreviewTitle] = useState('معاينة الجداول الأولية المقترحة من المولّد الآلي');
+  const [isPreviewPreliminary, setIsPreviewPreliminary] = useState(true);
+  const [approvingDraft, setApprovingDraft] = useState(false);
+  const [loadingViewVersionId, setLoadingViewVersionId] = useState<number | null>(null);
+
   // Conflicts State
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loadingConflicts, setLoadingConflicts] = useState(false);
@@ -142,21 +153,24 @@ export default function ScheduleVersionsPage() {
     setGenerating(true);
     setActionMessage(null);
     try {
+      // 1. توليد الجدول آلياً في الذاكرة أولاً (save_as_draft: false) لتمكين المعاينة الكاملة والتدقيق قبل الاعتماد
       const res = await api.post('/api/v1/scheduling/generate', {
         semester_id: semesterId,
         mode: genMode,
         timeout_ms: genTimeoutSec * 1000,
-        save_as_draft: saveAsDraft,
+        save_as_draft: false,
         draft_title: draftTitle
       });
 
       if (res && res.data) {
         setGenResult(res.data);
-        setActionMessage({
-          text: `✅ اكتمل التوليد بنجاح! الحالة: ${res.data.solverStatus} في ${(res.data.metrics.generationDurationMs / 1000).toFixed(2)} ثانية.`,
-          type: 'success'
-        });
-        loadVersions();
+        setPreviewTasks(res.data.tasks || []);
+        setPreviewMetrics(res.data.metrics || null);
+        setPreviewConflicts(res.data.conflicts || []);
+        setPreviewTitle(`معاينة الجداول الأولية المنشأة (${genMode === 'fast' ? 'بحث إرشادي فوري' : 'تحسين قيود متقدم CP-SAT'})`);
+        setIsPreviewPreliminary(true);
+        setIsGenModalOpen(false); // إغلاق نافذة الإعدادات
+        setIsPreviewModalOpen(true); // فتح نافذة المعاينة الأولية الكاملة
       }
     } catch (err: any) {
       setActionMessage({
@@ -166,6 +180,80 @@ export default function ScheduleVersionsPage() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  // اعتماد وحفظ المسودة رسمياً بعد مراجعتها في المعاينة الأولية
+  async function handleApproveDraft(finalTitle: string) {
+    if (!previewTasks || previewTasks.length === 0) return;
+    setApprovingDraft(true);
+    try {
+      const items = previewTasks
+        .filter((t: any) => (t.assignedSlot && t.assignedRoomId) || (t.start_time && t.room_id))
+        .map((t: any) => ({
+          assignment_id: t.assignmentId || null,
+          course_id: t.courseId || t.course_id,
+          professor_id: t.professorId || t.professor_id,
+          group_id: t.groupId || t.group_id,
+          room_id: t.assignedRoomId || t.room_id,
+          day_of_week: t.assignedSlot?.dayOfWeek !== undefined ? t.assignedSlot.dayOfWeek : t.day_of_week,
+          start_time: t.assignedSlot?.startTime || t.start_time,
+          end_time: t.assignedSlot?.endTime || t.end_time,
+          session_type: t.sessionType || t.session_type || 'lecture',
+          item_status: 'proposed',
+          note: 'معتمد من المعاينة الأولية للمولد الآلي'
+        }));
+
+      const res = await api.post('/api/v1/scheduling/versions', {
+        semester_id: semesterId,
+        title: finalTitle || draftTitle,
+        note: `تم التوليد والمعاينة الأولية بنمط (${genMode})، وتم الاعتماد كمسودة رسمية (${items.length} حصة).`,
+        items
+      });
+
+      if (res && res.data) {
+        setIsPreviewModalOpen(false);
+        setActionMessage({
+          text: `✅ تم اعتماد وحفظ مسودة الإصدار #${res.data.versionNumber} «${res.data.title}» بنجاح في النظام!`,
+          type: 'success'
+        });
+        loadVersions();
+      }
+    } catch (err: any) {
+      alert('فشل حفظ واعتماد المسودة: ' + (err?.error?.message_ar || err?.message || 'خطأ غير معروف'));
+    } finally {
+      setApprovingDraft(false);
+    }
+  }
+
+  // استعراض جدول أي إصدار مسجل سابقاً
+  async function handleViewVersion(version: Version) {
+    setLoadingViewVersionId(version.id);
+    try {
+      const res = await api.get(`/api/v1/scheduling/versions/${version.id}`);
+      if (res && res.data) {
+        setPreviewTasks(res.data.items || []);
+        setPreviewMetrics(res.data.version?.metrics || {
+          solverStatus: 'FEASIBLE',
+          totalTasksCount: res.data.items?.length || 0,
+          assignedTasksCount: res.data.items?.length || 0,
+          criticalConflictsCount: res.data.version?.critical_conflicts_count || 0
+        });
+        setPreviewConflicts([]);
+        setPreviewTitle(`استعراض جدول الإصدار #${version.version_number}: «${version.title}»`);
+        setIsPreviewPreliminary(false);
+        setIsPreviewModalOpen(true);
+      }
+    } catch (err: any) {
+      alert('فشل تحميل تفاصيل جدول هذا الإصدار: ' + (err?.message || 'خطأ غير معروف'));
+    } finally {
+      setLoadingViewVersionId(null);
+    }
+  }
+
+  // الرجوع لنافذة المعايير والتوليد من شاشة المعاينة
+  function handleBackToConfig() {
+    setIsPreviewModalOpen(false);
+    setIsGenModalOpen(true);
   }
 
   async function handleLoadConflicts() {
@@ -432,6 +520,18 @@ export default function ScheduleVersionsPage() {
 
                         {/* Action Buttons & Workflow State Machine */}
                         <div className="flex items-center gap-2 self-end lg:self-center flex-wrap">
+                          {/* View Timetable Button (استعراض شبكة جدول هذا الإصدار) */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleViewVersion(ver)}
+                            disabled={loadingViewVersionId === ver.id}
+                            className="text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5"
+                            title="معاينة واستعراض شبكة جدول هذا الإصدار"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            {loadingViewVersionId === ver.id ? 'جاري التحميل...' : 'استعراض الجدول'}
+                          </Button>
                           {/* Draft -> Review */}
                           {ver.status === 'draft' && (
                             <Button
@@ -740,10 +840,40 @@ export default function ScheduleVersionsPage() {
                 تشغيل محرك الجدولة الآلي (Auto-Scheduler)
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500 mb-4">
-                توليد اقتراح جدول زمني متكامل عبر حل قيود مزدوج (Dual Solver: بحث إرشادي فوري + تحسين قيود متقدم).
+                توليد اقتراح جدول زمني متكامل عبر حل قيود مزدوج (Dual Solver). ستتم إتاحة المعاينة التفاعلية الكاملة للجداول الأولية والتدقيق البصري قبل الموافقة والاعتماد كمسودة.
               </DialogDescription>
 
               <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+                    السداسي الأكاديمي المستهدف:
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSemesterId(1)}
+                      className={`p-2.5 rounded-xl border text-right transition-all text-xs font-bold ${
+                        semesterId === 1
+                          ? 'border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-300'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-600'
+                      }`}
+                    >
+                      السداسي الأول (S1)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSemesterId(2)}
+                      className={`p-2.5 rounded-xl border text-right transition-all text-xs font-bold ${
+                        semesterId === 2
+                          ? 'border-emerald-600 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-300'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-600'
+                      }`}
+                    >
+                      السداسي الثاني (S2)
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
                     نمط خوارزمية التوليد:
@@ -793,24 +923,19 @@ export default function ScheduleVersionsPage() {
                 </div>
 
                 <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={saveAsDraft}
-                      onChange={(e) => setSaveAsDraft(e.target.checked)}
-                      className="rounded accent-emerald-600 w-4 h-4"
-                    />
-                    حفظ النتيجة تلقائياً كمسودة إصدار جديد (Draft Version)
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-0.5">
+                    عنوان المسودة المقترحة (عند الاعتماد):
                   </label>
-                  {saveAsDraft && (
-                    <input
-                      type="text"
-                      value={draftTitle}
-                      onChange={(e) => setDraftTitle(e.target.value)}
-                      placeholder="عنوان المسودة المقترحة"
-                      className="w-full p-2 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
-                    />
-                  )}
+                  <input
+                    type="text"
+                    value={draftTitle}
+                    onChange={(e) => setDraftTitle(e.target.value)}
+                    placeholder="عنوان المسودة المقترحة"
+                    className="w-full p-2 text-xs rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    💡 سيتم أولاً فتح شاشة المعاينة التفاعلية للجداول الأولية لمطابقة القاعات والأساتذة والأفواج قبل حفظ المسودة في النظام.
+                  </p>
                 </div>
               </div>
 
@@ -822,16 +947,31 @@ export default function ScheduleVersionsPage() {
                   variant="primary"
                   onClick={handleRunAutoScheduler}
                   disabled={generating}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 shadow-sm font-bold"
                 >
-                  <Play className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-                  {generating ? 'جاري الحساب والتوليد...' : 'بدء التوليد الآن'}
+                  <Sparkles className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+                  {generating ? 'جاري الحساب والتوليد...' : 'بدء التوليد والمعاينة الأولية'}
                 </Button>
               </div>
             </div>
           </div>
         </Dialog>
       )}
+
+      {/* Preliminary Schedule Preview & Version Timetable Modal */}
+      <SchedulePreviewModal
+        open={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        title={previewTitle}
+        tasks={previewTasks}
+        metrics={previewMetrics}
+        conflicts={previewConflicts}
+        isPreliminary={isPreviewPreliminary}
+        initialDraftTitle={draftTitle}
+        onApproveAsDraft={handleApproveDraft}
+        onBackToConfig={handleBackToConfig}
+        approving={approvingDraft}
+      />
 
       {/* Rollback Confirmation Modal */}
       {rollbackTarget && (
