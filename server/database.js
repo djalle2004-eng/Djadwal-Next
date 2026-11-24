@@ -23,12 +23,14 @@ const dbConfig = {
 
 // Feature Flags (P6: Managed Migrations & Neon PostgreSQL Primary Engine)
 const FEATURE_READ_SOURCE = process.env.FEATURE_READ_SOURCE || 'postgres'; // 'postgres' | 'turso'
+const FEATURE_WRITE_SOURCE = process.env.FEATURE_WRITE_SOURCE || (FEATURE_READ_SOURCE === 'turso' ? 'turso' : 'postgres');
 const FEATURE_DUAL_WRITE = process.env.FEATURE_DUAL_WRITE !== 'false'; // default true
 
 logger.info({
     hasTurso: Boolean(dbConfig.tursoUrl && dbConfig.tursoAuthToken),
     hasPostgres: Boolean(dbConfig.postgresUrl),
     readSource: FEATURE_READ_SOURCE,
+    writeSource: FEATURE_WRITE_SOURCE,
     dualWrite: FEATURE_DUAL_WRITE
 }, 'Database configuration and feature flags initialized');
 
@@ -349,7 +351,26 @@ async function executeQuery(query, params = [], maxRetries = 3) {
     }
 
     // --- CASE 2: WRITE OPERATIONS (INSERT, UPDATE, DELETE) ---
-    // Primary execution on Neon PostgreSQL
+    // Option A: If Turso is the configured write source (or auto-selected via FEATURE_READ_SOURCE=turso)
+    if (FEATURE_WRITE_SOURCE === 'turso' && dbConfig.tursoUrl && dbConfig.tursoAuthToken) {
+        const result = await executeTursoQuery(query, cleanParams, maxRetries);
+
+        // Optional secondary dual-write to Neon in background (Safety net - never blocks response)
+        if (FEATURE_DUAL_WRITE && pool) {
+            (async () => {
+                try {
+                    const pgSql = toPostgresQuery(query);
+                    await pool.query(pgSql, cleanParams);
+                } catch (pgErr) {
+                    logger.warn({ err: pgErr.message, query: query.substring(0, 100) }, 'Dual-write to Neon failed (non-blocking)');
+                }
+            })().catch(() => {});
+        }
+
+        return result;
+    }
+
+    // Option B: Primary execution on Neon PostgreSQL
     if (pool) {
         const pgSql = toPostgresQuery(query);
         let primaryResult;
@@ -359,6 +380,11 @@ async function executeQuery(query, params = [], maxRetries = 3) {
             primaryResult = res.rows;
         } catch (primaryErr) {
             logger.error({ err: primaryErr.message, query: query.substring(0, 100) }, 'Primary write on Neon failed');
+            // Emergency Fallback: If Neon write fails (e.g. quota exceeded or connection drop), write to Turso so users are never blocked
+            if (dbConfig.tursoUrl && dbConfig.tursoAuthToken) {
+                logger.warn('Emergency Fallback: Executing write query on Turso due to Neon failure...');
+                return await executeTursoQuery(query, cleanParams, maxRetries);
+            }
             throw primaryErr;
         }
 
